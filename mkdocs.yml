@@ -1,0 +1,9 @@
+site_name: REALM
+
+theme:
+  name: simple-blog
+
+nav:
+  - Intro: index.md
+  - Posts:
+      - MIR 1.0 (ECS에 대한 이해): posts/2024-12-12.md
