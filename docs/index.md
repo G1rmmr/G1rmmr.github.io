@@ -1,7 +1,7 @@
-## **Nam Jiwon**
+# Hi, I'm Jiwon Nam
 
 <span style="display: inline-block; margin-right: 100px; width: 200px;">
-    ![Profile](../img/profile_for_career.JPG)
+    ![Profile](img/profile_for_career.JPG)
 </span>
 
 > 게임을 개발하기 위해 컴퓨터공학을 전공했습니다.  
