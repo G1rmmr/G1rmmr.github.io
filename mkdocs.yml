@@ -3,8 +3,15 @@ site_name: REALM
 theme:
   name: simple-blog
   theme_style: dark
+  logo: img/logo.png
+  favicon: img/logo.png
+  components:
+    title: false
 
 nav:
   - Intro: index.md
   - Posts:
       - MIR 1.0 (ECS에 대한 이해): posts/2024-12-12.md
+
+markdown_extensions:
+  - admonition
