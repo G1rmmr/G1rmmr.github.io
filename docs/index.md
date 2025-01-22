@@ -12,11 +12,9 @@
 - **Programming Language**:
     - C/C++ << Major
     - Python
-    - Rust
 
 - **Tools**:
     - Visual Studio
-    - Unreal Engine 5
     - VS Code
     - Git / GitHub
 
@@ -28,9 +26,15 @@
 
 - [졸업 프로젝트(AR, 핸드 트래킹, 이미지 인식)](https://github.com/G1rmmr/VirEarth)
 
+#### **Projects**
+
+- [White ashes (OpenGL Graphics)](https://github.com/G1rmmr/opengl-tutorial)
+
 #### **Awards & Activities**
 
 - 캡스톤 디자인 발표 금상 수상 (22.05)
+
+
 
 #### **Contact**
 * blckhnd.std@gmail.com

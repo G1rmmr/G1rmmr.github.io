@@ -11,7 +11,7 @@ theme:
 nav:
   - Intro: index.md
   - Posts:
-      - MIR 1.0 (ECS에 대한 이해): posts/2024-12-12.md
+      - MIR 1.0 : posts/2024-12-12.md
 
 markdown_extensions:
   - admonition
