@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
     <head>
-                <title>MIR 1.0 (ECS에 대한 이해) - REALM</title>
+                <title>MIR 1.0 - REALM</title>
 
             <meta charset="utf-8">
             <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -74,7 +74,7 @@
                             <ul class="dropdown-menu">
                                     <!-- block dropdown-menu -->
     <li>
-        <a href="./" class="dropdown-item text-decoration-none  active ">MIR 1.0 (ECS에 대한 이해)</a>
+        <a href="./" class="dropdown-item text-decoration-none  active ">MIR 1.0</a>
     </li>
 <!-- endblock -->
                             </ul>
@@ -124,7 +124,569 @@
             
             
         </header>
-        <p><p>첫 포스트로 내가 만든 엔진인 MIR 엔진을 소개할까 한다.</p></p>
+        <p><h1 id="ecs-penitence">ECS 아키텍처 패턴 (내 게임, Penitence를 때려친 이유)</h1>
+<p>첫 글을 뭘로 할까 하다가, 내가 최근에 찍먹해본 구조에 대해 말해보고자 한다. 음음.<br />
+바로 <strong>Entity-Component-System(줄여서, ECS)</strong> 이다.</p>
+<h2 id="1">1. 어쩌다...알게 됐는지</h2>
+<p>올해 초에 Rust 언어를 사용하는 Bevy엔진 소개 영상을 봤다.<br />
+Bevy는 특이하게 전형적인 OOP 구조(Game Object, Actor...)를 따르지 않는다.</p>
+<h3 id="ecs">ECS의 등장이었다.</h3>
+<p>자, ECS는 어떤 식으로 동작하는가?<br />
+우선 이를 알아보기 위해 <strong>데이터</strong>에 대해 먼저 알아볼 필요가 있다.</p>
+<h2 id="2-data-oriented-programming">2. 데이터 지향 프로그래밍 (Data Oriented Programming)</h2>
+<p>머릿 속으로 아무 객체(Object)나 떠올려 보라.<br />
+OOP의 익숙한 개발자들은 뭐, 고양이, 강아지, 도날드 트럼프 등등 여러 객체를 생각해냈을 것이다.  </p>
+<p>뭐, 그냥 사람을 객체로 나타낸다 치자.</p>
+<p>(이하 모든 예시 코드는 내가 C++ 개발자니 그렇게 됐다 ㅇㅇ)</p>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+#include &lt;string&gt;
+
+
+class Person
+{
+public:
+    // 여러 생성자들...
+    // 복사 / 이동 / 할당 연산자...
+    // 그리고 뭐 또 이상한 게터 세터 어쩌구 저쩌구...
+
+    void Walk() // 그냥 걷는 함수
+    {
+        std::cout &lt;&lt; name &lt;&lt; &quot;is walking&quot; &lt;&lt; std::endl;
+    }
+
+protected:
+    std::string name; // 이름
+    float height; // 신장
+    float weight; // 몸무게
+};
+</code></pre>
+<p>현재 사람 객체의 멤버는 name, height, weight이다.<br />
+각각의 자료형은 8바이트 문자열과 4바이트 부동소수점 소수 두개.</p>
+<p>만약에 무슨, 군 장병 관리 벡터를 만들어 순회한다 가정해보자.</p>
+<pre><code class="language-cpp">std::vector&lt;Person&gt; soldiers;
+
+for(const auto&amp; soldier : soldiers)
+    soldier.Walk();
+</code></pre>
+<p>그럼 이 벡터는, <strong>구조체의 배열</strong>(Array Of Structure)이 된다.</p>
+<h3 id="_1">이게 문제다.</h3>
+<p>읭? 괜찮은거 아닌가요? 뭐가 문제죠? 라고 묻는다면, 물론 개발할땐, 편하겠지. 그것이 OOP의 목적이니까잉.<br />
+하지만 전공자라면 컴퓨터구조 시간에 들어봤을법한 녀석이 등장한다면 얘기가 달라진다!  </p>
+<h3 id="cache">그것은 바로 캐시(Cache)다.</h3>
+<p>그냥, 쉬운 얘시를 들어보자.</p>
+<p>당신은 지금부터 도서관 사서임.<br />
+근데, 책들이 주제, 초성, 출간 날짜 상관없이 아무데나 막 꽂혀 있음.<br />
+귀찮아 죽고 싶을거 아닌가?</p>
+<p>여기서 중요한 건, 감정이 아니라 이유다.<br />
+그 귀찮음으로 인한 자가 소멸 욕구가 어디서 기인하는지 알아야 한다.  </p>
+<p>책이 있는 위치가 지 맴대로라면 왜 힘들어질까.<br />
+정답은, 겁나 왔다리갔다리 해야하기 때문이다.</p>
+<blockquote>
+<p>내가 생각하기엔, S책은 저쪽에 있어.<br />
+-&gt; 아, 아니었네. 저긴가.<br />
+-&gt; 또 아니네. 썅.</p>
+</blockquote>
+<p>이렇게 된다는 거다.<br />
+이런 상황을 캐시도 겪는데, 이를 <strong>캐시 미스</strong>라 한단다.</p>
+<p>그리고 조금이라도 지능이 있는 사람이라면 절대 이렇게 관리하지 않을거다.<br />
+최소한, 책이 어떤 분야의 서적인지 정도는...코팅해서 앞장에다 불히지 않겠나.</p>
+<h3 id="_2">근데, 캐시도 똑같다.</h3>
+<p>잘 생각해보라.<br />
+컴퓨터 하드웨어에서 <em>DATA</em>는 결국 메모리 공간이다.</p>
+<p>Person 객체의 메모리는 다음과 같이 모델링 가능하다.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Person</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>name(8 byte)</td>
+<td>height(4 byte)</td>
+<td>weight(4 byte)</td>
+</tr>
+</tbody>
+</table>
+<p>자, 이제 soldiers 벡터를 순회한다 생각해보자.<br />
+포인터가 처음에는 8바이트짜리 name을 가리키고 순서대로 height, weight를 가리킬 것이다.<br />
+포인터는 어떨때에는 8바이트를 움직여야 하고 어떨 때는 4바이트를 움직여야 한다.  </p>
+<p>자, 이러한 방식 때문에 메모리 참조에 생각보다 많은 <strong>(정말이다.)</strong> 리소스가 낭비된다.</p>
+<h3 id="_3">그럼 어떻게 해야함?</h3>
+<p>이러한 문제를 해결할 좋은 방법 중 하나는,<br />
+<strong>객체 안에 있는 데이터와 로직을 분리하는 것이다.</strong></p>
+<p>음...원래 코드를 다음과 같이 만들어 보자.</p>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+#include &lt;string&gt;
+
+// 클래스 대신 알기 쉽게 네임 스페이스
+namespace Person
+{
+    std::string name;
+    float height;
+    float weight;
+
+    void Walk(const Person::name&amp; _name)
+    {
+        std::cout &lt;&lt; _name &lt;&lt; &quot;is walking&quot; &lt;&lt; std::endl;
+    }
+};
+
+std::vector&lt;Person::name&gt; soldiers;
+
+// 순회
+for(const auto&amp; name : soldiers)
+    Person::Walk(name);
+</code></pre>
+<p>"어? 그럼 신장이나 몸무게를 순회하려면 어떻게 하나요?"<br />
+그 질문에 대한 답은 다음과 같다.</p>
+<pre><code class="language-cpp">#include &lt;unordered_map&gt;
+
+std::unordered_map&lt;Person::name, Person::height&gt; soldier_heights;
+
+void PrintHeight(float _h)
+{
+    std::cout &lt;&lt; _h &lt;&lt; std::endl;
+}
+
+// 순회
+for(const auto&amp; name : soldiers)
+    PrintHeight(soldier_heights[name]);
+</code></pre>
+<p>급조한 코드라서 좀...병신처럼 보이지만, 핵심 아이디어는 이거다!</p>
+<p><strong>이런식으로 데이터와 로직을 객체라는 감옥해서 해방시키는 것이다!</strong></p>
+<p>그리고 이렇게 배열의 구조체(Structure Of Arrays)로 만드는게,<br />
+<strong>데이터 지향 프로그래밍, 데이터 지향 설계이다.</strong></p>
+<h2 id="3-ecs">3. 그래서 ECS가 뭐임</h2>
+<p>음...우선 위에서 soldiers 벡터를 순회했을때, Person::name으로 순회했던 것을 다음과 같이 바꿔보자.</p>
+<pre><code class="language-cpp">#include &lt;string&gt;
+#include &lt;vector&gt;
+#include &lt;unordered_map&gt;
+
+namespace Entity
+{
+    using id = int;
+}
+
+namespace Component
+{
+    using name = std::string;
+    using height = float;
+    using weight = float;
+};
+
+namespace System
+{
+    auto walk = [&amp;](Entity::id _id)
+    {
+        std::cout &lt;&lt; names[_id] &lt;&lt; &quot;is walking\n&quot;;
+    };
+
+    std::unordered_map&lt;Entity::id, Component::name&gt; names;
+}
+
+int main()
+{
+    std::vector&lt;Entity::id&gt; soldiers;
+
+    // 대충 엔티티 초기화 코드 ~~~
+    for(const int id : soldiers)
+        System::walk(id);   
+}
+</code></pre>
+<p>위 코드를 보았을때, Person 객체의 흔적이 보이는가?<br />
+우리처럼 Person을 수정했다는 사실을 아는 것이 아니라면,
+아마 찾기에 어려울 것이다.</p>
+<p>코드에 이미 힌트가 나와있다.</p>
+<h3 id="entity-id">Entity란, 특정 데이터를 식별할 수 있는 최소한의 ID이다.</h3>
+<p>나는 위 코드에서 int로 id를 표현했다.</p>
+<p>슬슬, 엔진부터 시작해 개발 모든 부분을 함께 하려<strong>했던</strong> 나의 성장 프로젝트,<br />
+'Penitence'에 대해 말할 수 있게 된거 같다. <a href="https://github.com/G1rmmr/penitence-source">(프로젝트 링크)</a></p>
+<p>참고로, Penitence에서는 Entity가 다음과 같이 정의가 되어있다.</p>
+<pre><code class="language-cpp">#include &lt;cstdint&gt;
+
+namespace MIR // 엔진 이름
+{
+    namespace ECS // ECS 아키텍처와 관련된 그룹
+    {
+        struct Entity // 사실 이름공간으로 사용해도 괜찮았을듯...
+        {
+            using ID = uint16_t;
+        };
+    }
+}
+</code></pre>
+<h3 id="component">Component란, 데이터다.</h3>
+<p>자, DOP에서는 <strong>데이터</strong>와 로직을 분리한다고 설명했다.<br />
+거기서 말하는 데이터를 ECS에서는 <strong>컴포넌트</strong>라 한다.</p>
+<p>상용엔진 게임 개발자라면 컴포넌트의 개념에 대해서 잘 알고 있을텐데, 그거 맞다.</p>
+<p>음...말이 나왔으니 말인데,<br />
+ECS를 적용시킨 게임 구조 플로우는 대충 다음과 같이 흘러간다.</p>
+<table>
+<thead>
+<tr>
+<th>게임 초기화</th>
+<th>게임 업데이트</th>
+<th>게임 셧다운</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>엔티티 ID 설정</td>
+<td>컴포넌트에 시스템 적용</td>
+<td>동적 할당된 메모리 해제</td>
+</tr>
+<tr>
+<td>컴포넌트 초기값 설정</td>
+<td>시스템으로 업데이트된 컴포넌트 저장</td>
+<td>(그 외 이것저것)</td>
+</tr>
+</tbody>
+</table>
+<p>나 같은 경우는, 컴포넌트 구조가 독특하다.<br />
+(코드 난해함 주의.)</p>
+<pre><code class="language-cpp">// 컴포넌트 베이스 클래스
+namespace MIR
+{
+    constexpr std::uint8_t MAX_COMPONENTS = 0xFF;
+
+    struct Component
+    {
+        using Tag = std::uint32_t;
+
+        virtual ~Component() = default;
+    };
+}
+</code></pre>
+<pre><code class="language-cpp">
+namespace MIR
+{
+    // 풀 베이스 클래스
+    class PoolBase
+    {
+    public:
+        virtual ~PoolBase() = default;
+    };
+
+    // 컴포넌트 풀
+    template &lt;typename T&gt;
+    class ComponentPool : public PoolBase
+    {
+    public:
+        static constexpr std::size_t MAX_SIZE = 0xFF;
+
+        ComponentPool() = default;
+
+        template &lt;typename... Args&gt;
+        inline std::unique_ptr&lt;Component,
+            std::function&lt;void(Component*)&gt;&gt; Acquire(Args&amp;&amp;... args)
+        {
+            T* component;
+
+            if (pool.empty())
+            {
+                // 풀에 여유 컴포넌트가 없으므로 새로운 컴포넌트 할당
+                component = new T(std::forward&lt;Args&gt;(args)...);
+            }
+            else
+            {
+                // 기존 컴포넌트를 재사용
+                component = pool.top();
+                pool.pop();
+
+                // 새 인자로 재초기화
+                *component = T(std::forward&lt;Args&gt;(args)...);
+            }
+
+            // 커스텀 해제자 정의: unique_ptr이 해제될 때 호출됨
+            auto deleter = [this](Component* ptr)
+            {
+                this-&gt;Release(static_cast&lt;T*&gt;(ptr));
+            };
+
+            return std::unique_ptr&lt;Component,
+                std::function&lt;void(Component*)&gt;&gt;(component, deleter);
+        }
+
+    private:
+        std::stack&lt;T*&gt; pool;
+
+        inline void Release(T* component)
+        {
+            if (component)
+            {
+                if (pool.size() &lt; MAX_SIZE)
+                    pool.push(component);
+                else
+                    delete component;
+            }
+        }
+    };
+};
+</code></pre>
+<p>여기까지가 컴포넌트를 관리하는 내 방식임.  </p>
+<p>Component를 관리할때 편하게 type_info, index를 사용할까 했지만,<br />
+엔티티를 ID로 구분했던 것처럼, 비슷한 방식을 채택. (단, ID라는 이름은 Entity::ID와 겹쳐서 헷갈릴 수 있기에, Tag라는 새로운 식별자를 정의함.)</p>
+<p>또한, 캐시 친화력을 최대로 끌어오기 위해 스택을 이용해서 컴포넌트 풀을 만듦.</p>
+<p>아래는 매니저 클래스. (더 난해함)</p>
+<pre><code class="language-cpp">namespace MIR
+{
+    namespace ECS
+    {
+        using Mask = std::bitset&lt;MAX_COMPONENTS&gt;;
+
+        using Data = std::unordered_map&lt;Component::Tag,
+            std::unique_ptr&lt;Component, std::function&lt;void(Component*)&gt;&gt;&gt;;
+
+        using Pool = std::shared_ptr&lt;PoolBase&gt;;
+
+        class Manager
+        {
+        public:
+            Manager() = default;
+            ~Manager();
+
+            Entity::ID CreateEntity();
+            void DestoryEntity(Entity::ID id);
+
+            template &lt;typename T, typename... Args&gt;
+            requires std::constructible_from&lt;T, Args...&gt;
+            inline void AddComponent(Entity::ID id, Args&amp;&amp;... args)
+            {
+                if (masks.find(id) == masks.end())
+                    throw std::runtime_error(&quot;Invalid Entity ID&quot;);
+
+                Component::Tag tag = GetTag&lt;T&gt;();
+                if (masks[id][tag])
+                    throw std::runtime_error(&quot;Component already exists for this Entity&quot;);
+
+                masks[id].set(tag);
+
+                if(pools.find(tag) == pools.end())
+                    pools[tag] = std::make_shared&lt;ComponentPool&lt;T&gt;&gt;();
+
+                auto pool = std::static_pointer_cast&lt;ComponentPool&lt;T&gt;&gt;(pools[tag]);
+                auto component = pool-&gt;Acquire(std::forward&lt;Args&gt;(args)...);
+                components[id][tag] = std::move(component);
+            }
+
+            template &lt;typename T&gt;
+            inline T* GetComponent(Entity::ID id)
+            {
+                Component::Tag tag = GetTag&lt;T&gt;();
+                if(!masks[id][tag])
+                    return nullptr;
+
+                auto it = components.find(id);
+
+                if(it != components.end() &amp;&amp; it-&gt;second.find(tag) != it-&gt;second.end())
+                    return static_cast&lt;T*&gt;(it-&gt;second[tag].get());
+
+                return nullptr;
+            }
+
+            template &lt;typename T&gt;
+            inline bool HasComponent(Entity::ID id)
+            {
+                Component::Tag tag = GetTag&lt;T&gt;();
+                return masks[id][tag];
+            }
+
+            template &lt;typename... Components&gt;
+            inline std::vector&lt;Entity::ID&gt; Query() const
+            {
+                std::vector&lt;Entity::ID&gt; result;
+
+                for(const auto&amp; [id, mask] : masks)
+                    if((mask.test(GetTag&lt;Components&gt;()) &amp;&amp; ...))
+                        result.emplace_back(id);
+
+                return result;
+            }
+
+        private:
+            /// 엔티티별 컴포넌트 데이터를 관리하는 맵
+            std::unordered_map&lt;Entity::ID, Data&gt; components;
+            /// 엔티티별 컴포넌트 보유 마스크를 관리하는 맵
+            std::unordered_map&lt;Entity::ID, Mask&gt; masks;
+            /// 컴포넌트 태그별 풀(Pool)을 관리하는 맵
+            std::unordered_map&lt;Component::Tag, Pool&gt; pools;
+
+            /// 재사용 가능한 엔티티 ID를 관리하는 큐
+            std::queue&lt;Entity::ID&gt; id_queue;
+
+            /// 다음에 할당할 엔티티 ID
+            inline static Entity::ID next_id = 0;
+            /// 다음에 할당할 컴포넌트 태그
+            inline static Component::Tag next_tag;
+
+            inline Entity::ID GetID()
+            {
+                return next_id++;
+            }
+
+            template &lt;typename T&gt;
+            inline static Component::Tag GetTag()
+            {
+                static Component::Tag tag = next_tag++;
+                return tag;
+            }
+        };
+    }
+}
+</code></pre>
+<p>와 지금봐도 너무 소름돋는 코드임.</p>
+<p>Mask &lt;&lt;&lt;&lt; <strong>얘가 내 아이디어의 GOAT임.</strong>  </p>
+<p>시스템 업데이트 시, 엔티티들의 상태를 확인하고 순회할때 Tag로 하나 하나 찾아보게 하는게 너무 짜침...<br />
+그래서 내가 생각한 것중 하나가 다음과 같다.</p>
+<p><strong>'특정 시스템에서 업데이트 될 몇가지 컴포넌트를 엔티티가 '무조건' 가지고 있다 보장시키면, 모든 엔티티를 검사할 필요가 없지 않나?'</strong></p>
+<p>그렇게, Mask라는 구조를 만들고, Query()라는 템플릿 함수를 만듦.</p>
+<p>Query()의 특징은 파라미터 팩 내부에 들어온 모든 컴포넌트를 가지는 엔티티 벡터 반환임.<br />
+그리고 그 연산이, 비트셋으로 빠르게 동작하고, 코드를 읽는 사람도 어떤 역할을 하는 코드인지 쉽게(?)알 수 있다고 '생각함.'</p>
+<p>암튼, 이제 다음 토픽.</p>
+<h3 id="system">System이란, 로직이다.</h3>
+<p>이미 시스템에 대해 컴포넌트에서 반절 이상 설명한 것 같다.  </p>
+<p>그냥 코드를 보면서 이해해보자.</p>
+<pre><code class="language-cpp">namespace MIR
+{
+    class System
+    {
+    public:
+        System() = default;
+        virtual ~System() = default;
+
+        virtual void Update(ECS::Manager&amp; manager, const float dt) = 0;
+    };
+}
+</code></pre>
+<p>업데이트에서 엔티티를 가져오기 위해 의존성 주입으로 ECS::Manager를 획득한다.  </p>
+<p>어떤 식으로 돌아가는지 좀 더 알기 위해, 내가 짠 코드를 또 한번 보자.</p>
+<pre><code class="language-cpp">const float JUMP_SPEED = 500.f;  ///&lt; 점프 시 상승 속도
+const float GRAVITY = 980.f;     ///&lt; 중력 가속도 (단위: 픽셀/초² 가정)
+const float LEVEL = 500.f;       ///&lt; 지면 레벨(y좌표)
+
+void Movement::Update(Manager&amp; manager, const float dt)
+{
+    std::vector&lt;Entity::ID&gt; entities = manager.Query&lt;Position, Velocity, PlayerState, Sprite&gt;();
+
+    for(const auto&amp; id : entities)
+    {
+        Position* pos = manager.GetComponent&lt;Position&gt;(id);
+        Velocity* vel = manager.GetComponent&lt;Velocity&gt;(id);
+        PlayerState* state = manager.GetComponent&lt;PlayerState&gt;(id);
+        Sprite* spr = manager.GetComponent&lt;Sprite&gt;(id);
+
+        // 점프 로직: 점프 상태가 아니며 지면에 있을 때 점프 명령 처리
+        if(state-&gt;now_state == PlayerState::Jumping
+            &amp;&amp; !state-&gt;is_jumping &amp;&amp; pos-&gt;y &gt;= LEVEL)
+        {
+            vel-&gt;y = -JUMP_SPEED;
+            state-&gt;is_jumping = true;
+        }
+
+        // 상태에 따른 수평 이동 속도 및 스프라이트 스케일 조정
+        switch(state-&gt;now_state)
+        {
+        case PlayerState::MovingLeft:
+            vel-&gt;x = -200.f;
+            spr-&gt;sprite.setScale(-0.5f, 0.5f);
+            break;
+
+        case PlayerState::MovingRight:
+            vel-&gt;x = 200.f;
+            spr-&gt;sprite.setScale(0.5f, 0.5f);
+            break;
+
+        case PlayerState::Jumping:
+            printf(&quot;JUMP\n&quot;);
+            // 점프 중 특별한 수평 변화 없음, vel-&gt;x는 유지됨(기본적으로 0)
+            break;
+
+        default:
+            // Idle 상태 등에서는 수평 속도 0
+            vel-&gt;x = 0.f;
+            break;
+        }
+
+        // 중력 적용: 지면 위가 아닐 경우(점프 중) 중력 가속도 적용
+        if(pos-&gt;y &lt; LEVEL)
+            vel-&gt;y += GRAVITY * dt;
+
+        // 지면 도달 처리: 지면을 넘어가지 않도록 위치, 상태 보정
+        if(pos-&gt;y + vel-&gt;y * dt &gt;= LEVEL)
+        {
+            pos-&gt;y = LEVEL;
+            vel-&gt;y = 0.f;
+            state-&gt;is_jumping = false;
+
+            // 점프 상태에서 지면 도달 시 Idle 상태로 전환
+            if(state-&gt;now_state == PlayerState::Jumping)
+                state-&gt;now_state = PlayerState::Idle;
+        }
+
+        // 위치 갱신: 속도 * 시간(dt)을 위치에 반영
+        pos-&gt;x += vel-&gt;x * dt;
+        pos-&gt;y += vel-&gt;y * dt;
+    }
+}
+</code></pre>
+<p>점점 게임의 완성이 아니라, 엔진의 완성을 위한 움직임을 계속이어 나가다 보니...ㅎ<br />
+코드가 좀 그렇지만, 핵심 아이디어는 다음과 같다.</p>
+<ol>
+<li>쿼리로 엔티티를 가져온다.</li>
+<li>상황에 맞게 컴포넌트를 업데이트한다.</li>
+</ol>
+<p><strong>끝임. ㅇㅇ</strong></p>
+<p>이런 식으로 ECS를 만들어 본 것이었다란다.</p>
+<h2 id="4">4. 장단점</h2>
+<p>ECS 구조의 대표적인 장단점을 다음과 같이 정리하겠음.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>장단점</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>장점</td>
+<td>대규모 시뮬레이션에 용이, 병렬 프로그래밍에 용이</td>
+</tr>
+<tr>
+<td>단점</td>
+<td>학습 곡선, 초기 설계 잘못하면 ㅈㅈㅈ</td>
+</tr>
+</tbody>
+</table>
+<p>장단점을 따로 설명해야할 필요가 있남.</p>
+<p>객체 순회시 사이즈가 일정한 컴포넌트만을 가져오기에 캐시 미스가 덜남.<br />
+따라서, 대규모 시뮬레이션에 좋음.</p>
+<p>SOA(배열의 구조체들)를 사용하기에 병렬프로그래밍할때 좋음.</p>
+<p>단점은 따로 말할 필요가 없이 코드를 보면 답 나오잖슴?<br />
+C++이랑 게임 엔진 구조 조금이라도 알아야 이해가 되는 수준의 코드임.</p>
+<p>암튼 그렇다 하자.</p>
+<h2 id="5-penitence">5. Penitence 왜 포기함? 끈기 ㅉㅉ</h2>
+<p>원래 <em>Penitence</em> 프로젝트의 의의는, 다음과 같았음.</p>
+<ol>
+<li>ECS 구조 만들어보기</li>
+<li>2D 게임 만들기</li>
+</ol>
+<p>전반적으로, Cpp 코드 작성 레벨업이 나의 목표였다. 이 말임.</p>
+<p>근데, 이...MIR엔진을 만들다보니...너무 매력적인거...<br />
+Penitence를 만들어야겠다는 열정이 식었음.  </p>
+<h3 id="_4">근데 결론적으로, 다른 방식으로 만들어질 예정임.</h3>
+<p>스탠드 얼론 형식의 게임이 아니라,<br />
+<strong>MIR엔진의 버전이 업그레이드될때 마다 엔진의 신기능을 뽐낼 수 있는 데모 컨셉 게임</strong><br />
+이 방식으로 나오지 않을까 싶음.  </p>
+<p><em>(사실, Penitence의 컨셉을 버리기에는 너무 아깝기도 해서 ㅇㅇ;;;)</em></p>
+<p>아, 끈기없는 것도 ㅇㅈ....  </p>
+<p>그에 대해서는 절대 할말이 없다...</p>
+<h2 id="6">6. 마무으리</h2>
+<p>첫글로 내가 만든 엔진, MIR를 소개했다.<br />
+아마, 내 생각에 MIR는 다른 방식으로(현대적인, C++을 버리고 ㅎㅎ) 리뉴얼되지 않을까!  </p>
+<p>이제 2025인데, 다들 HNY</p></p>
     </article>
 </section>
 <!-- endblock -->
