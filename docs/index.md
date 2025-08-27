@@ -1,30 +1,31 @@
+
 <span style="display: inline-block; width: 250px">
     ![Profile](img/profile.png)
 </span>
 
 # **Jiwon Nam**
  
-> 게임 개발하려고 컴공 진학한 무모한 인간.  
-> (주관심사는 그래픽스, 게임 엔진 아키텍처였더랬죠...)
+> 코딩하지 않기 위해 코딩하는 인간
 
 #### **Skills**
 
 - **Programming Language**:
-    - C/C++ << Major
+    - C/C++
+    - C#
     - Python
 
 - **Tools**:
     - Visual Studio
-    - VS Code
     - Git / GitHub
 
-- **Language**:
-    - English (OPIC - IM2)
+- **FrameWorks**:
+    - .Net
+    - SFML
+    - OpenGL
 
-#### **Education**
-인천대학교 컴퓨터공학부 (17.03 ~ 23.08)
-
-- [졸업 프로젝트(AR, 핸드 트래킹, 이미지 인식)](https://github.com/G1rmmr/VirEarth)
+#### **Experiences**
+    - 넥스캠 / 윈도우즈 앱 개발 (25.05 ~ )
+    - 인천대학교 컴퓨터공학부 학사 (17.03 ~ 23.08)
 
 #### **Projects**
 
@@ -33,9 +34,7 @@
 
 #### **Awards & Activities**
 
-- 캡스톤 디자인 발표 금상 수상 (22.05)
-
-
+- [캡스톤 디자인 발표 금상 수상 (22.05)](https://github.com/G1rmmr/VirEarth)
 
 #### **Contact**
 * blckhnd.std@gmail.com
