@@ -29,6 +29,7 @@
 
 #### **Projects**
 
+- [Art Gallery Ghost](https://github.com/G1rmmr/art-gallery-ghost)
 - [Penitence (C++ ECS Project)](https://github.com/G1rmmr/penitence-source)
 - [White ashes (OpenGL Graphics)](https://github.com/G1rmmr/opengl-tutorial)
 

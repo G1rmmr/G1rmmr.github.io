@@ -30,3 +30,5 @@ docs/img/*~
 *.tmp
 *.bak
 *.~*
+
+guide-for-writing.md
