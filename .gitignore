@@ -22,6 +22,7 @@ docs/img/*~
 *.log
 
 .vscode/
+.venv/
 .idea/
 *.iml
 *.user
@@ -32,3 +33,4 @@ docs/img/*~
 *.~*
 
 guide-for-writing.md
+requirements.txt

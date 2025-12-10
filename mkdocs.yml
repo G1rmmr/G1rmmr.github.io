@@ -1,4 +1,5 @@
 site_name: REALM
+site_url: https://G1rmmr.github.io/
 
 theme:
   name: simple-blog
@@ -11,9 +12,9 @@ theme:
 nav:
   - Intro: index.md
   - Posts:
-      - MIR 1.0 : posts/2024-12-12.md
-      - White Ashes : posts/2025-1-22.md
-      - 근황 : posts/2025-8-27.md
+      - MIR 1.0: posts/2024-12-12.md
+      - White Ashes: posts/2025-1-22.md
+      - MIR 2.0: posts/2025-12-8.md
 
 markdown_extensions:
   - admonition

@@ -24,14 +24,15 @@
     - OpenGL
 
 #### **Experiences**
-    - 넥스캠 / 윈도우즈 앱 개발 (25.05 ~ )
-    - 인천대학교 컴퓨터공학부 학사 (17.03 ~ 23.08)
+
+    - 넥스캠 / 윈도우즈 앱 개발 및 PM (25.05 ~ )
+    - 인천대학교 / 컴퓨터공학부 학사 (17.03 ~ 23.08)
 
 #### **Projects**
 
-- [Art Gallery Ghost](https://github.com/G1rmmr/art-gallery-ghost)
-- [Penitence (C++ ECS Project)](https://github.com/G1rmmr/penitence-source)
+- [Art Gallery Ghost (MIR 2.0)](https://github.com/G1rmmr/art-gallery-ghost-cmake)
 - [White ashes (OpenGL Graphics)](https://github.com/G1rmmr/opengl-tutorial)
+- [Penitence (C++ ECS Project)](https://github.com/G1rmmr/penitence-source)
 
 #### **Awards & Activities**
 
