@@ -1,4 +1,4 @@
-<span style="display: inline-block; width: 500px">
+<span style="display: inline-block; width: 300px">
     ![Profile](img/profile.png)
 </span>
 
