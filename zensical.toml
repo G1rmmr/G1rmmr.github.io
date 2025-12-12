@@ -3,9 +3,7 @@ site_name = "R E A L M"
 site_description = "Welcome to my place."
 site_author = "John Nam"
 
-copyright = """
-Copyright &copy; 2025 John Nam
-"""
+copyright = "&copy; 2025 John Nam"
 
 docs_dir = "docs"
 site_dir = "site"
@@ -24,32 +22,23 @@ nav = [
 [project.theme]
 variant = "modern"
 favicon = "img/favicon.png"
-language = "ko"
+language = "en"
+logo = "img/favicon.png"
+
+features = [
+    "navigation.instant",
+    "navigation.instant.prefetch",
+    "navigation.instant.progress",
+    "navigation.tabs",
+    "navigation.prune",
+    "header.autohide",
+    "announce.dismiss",
+    "toc.integrate",
+]
 
 [project.theme.palette]
 scheme = "slate"
 primary = "custom"
 
-features = [
-    "announce.dismiss",
-    "content.action.edit",
-    "content.action.view",
-    "content.code.annotate",
-    "content.code.copy",
-    "content.code.select",
-    "content.footnote.tooltips",
-    "content.tabs.link",
-    "content.tooltips",
-    "header.autohide",
-    "navigation.expand",
-    "navigation.footer",
-    "navigation.indexes",
-    "navigation.instant.prefetch",
-    "navigation.path",
-    "navigation.prune",
-    "navigation.sections",
-    "navigation.tabs",
-    "navigation.tracking",
-    "search.highlight",
-    "toc.integrate",
-]
+[project.extra]
+generator = false
