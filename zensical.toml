@@ -7,14 +7,14 @@ copyright = """
 Copyright &copy; 2025 John Nam
 """
 
-docs_dir = "ko/docs"
+docs_dir = "docs"
 site_dir = "site"
 
 extra_css = ["stylesheets/extra.css"]
 
 nav = [
-  {"홈" = "index.md"},
-  {"포스트" = [
+  {"H O M E" = "index.md"},
+  {"P O S T" = [
     "posts/2025-12-8.md",
     "posts/2025-1-22.md",
     "posts/2024-12-12.md",
@@ -29,12 +29,6 @@ language = "ko"
 [project.theme.palette]
 scheme = "slate"
 primary = "custom"
-
-[project.extra]
-alternate = [
-  { name = "한국어", link = "/", lang = "ko" },
-  { name = "English", link = "/en/", lang = "en" },
-]
 
 features = [
     "announce.dismiss",
