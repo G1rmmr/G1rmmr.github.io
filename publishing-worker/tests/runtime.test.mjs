@@ -12,6 +12,10 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
   const requests = [];
   let redirectUpstream = false;
   let imageStored = false;
+  const postPath = "docs/posts/runtime-test.md";
+  let postContent = "# Runtime title\r\n\r\n원본 본문\r\n";
+  let postSha = "b".repeat(40);
+  let postWrites = 0;
   const png = new Uint8Array([137,80,78,71,13,10,26,10]);
   const mf = new Miniflare(convertV4MiniflareOptions({ workers: [{
     name: "publisher-test",
@@ -36,6 +40,18 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
       }
       assert.equal(url.hostname, "api.github.com");
       assert.equal(req.headers.get("Authorization"), "Bearer test-user-token");
+      if (url.pathname === "/repos/G1rmmr/G1rmmr.github.io/contents/docs/posts") return Response.json(postContent === null ? [] : [{ type: "file", path: postPath, name: "runtime-test.md", sha: postSha }]);
+      if (url.pathname === `/repos/G1rmmr/G1rmmr.github.io/contents/${postPath}`) {
+        if (req.method === "PUT" || req.method === "DELETE") {
+          const change = await req.json(); postWrites++;
+          assert.equal(change.sha, postSha); assert.equal(change.branch, "main");
+          postContent = req.method === "DELETE" ? null : Buffer.from(change.content, "base64").toString();
+          postSha = "c".repeat(40);
+          return Response.json({ commit: { sha: "d".repeat(40) }, content: postContent === null ? null : { sha: postSha } });
+        }
+        return postContent === null ? Response.json({}, { status: 404 }) : Response.json({ type: "file", encoding: "base64", size: Buffer.byteLength(postContent), content: Buffer.from(postContent).toString("base64"), sha: postSha });
+      }
+      if (url.pathname === "/repos/G1rmmr/G1rmmr.github.io/commits") return Response.json([]);
       if (/\/contents\/docs\/img\/uploads\/[a-f0-9]{64}\.png$/.test(url.pathname)) {
         if (req.method === "PUT") { imageStored = true; return Response.json({ commit: { sha: "a".repeat(40) } }, { status: 201 }); }
         if (req.headers.get("Accept") === "application/vnd.github.raw+json") return new Response(png);
@@ -50,6 +66,8 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
     const db = await mf.getD1Database("DB");
     const schema = readFileSync(new URL("../../analytics-worker/migrations/0002_publishing.sql", import.meta.url), "utf8");
     for (const statement of schema.replace(/^--.*$/gm, "").split(";").filter(s => s.trim())) await db.prepare(statement).run();
+    const management = readFileSync(new URL("../../analytics-worker/migrations/0004_post_management.sql", import.meta.url), "utf8");
+    for (const statement of management.split(";").filter(s => s.trim())) await db.prepare(statement).run();
     const start = await mf.dispatchFetch(ORIGIN + "/auth/login", { redirect: "manual" });
     assert.equal(start.status, 302);
     const location = new URL(start.headers.get("Location"));
@@ -79,6 +97,27 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
     assert.equal(preview.status, 200);
     assert.equal(preview.headers.get("Content-Type"), "image/png");
     assert.deepEqual(new Uint8Array(await preview.arrayBuffer()), png);
+    const list = await mf.dispatchFetch(ORIGIN + "/api/posts", { headers: { Cookie: cookie } });
+    assert.equal((await list.json()).posts[0].title, "Runtime title");
+    const loaded = await mf.dispatchFetch(`${ORIGIN}/api/post?path=${postPath}`, { headers: { Cookie: cookie } });
+    const original = await loaded.json();
+    assert.equal(original.body, "원본 본문\r\n");
+    const mutationHeaders = { Cookie: cookie, Origin: ORIGIN, "X-CSRF-Token": userSession.csrf, "Content-Type": "application/json" };
+    const updateBody = JSON.stringify({ request_id: crypto.randomUUID(), path: postPath, sha: original.sha, title: "수정 제목", body: "수정 본문\n" });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const updated = await mf.dispatchFetch(ORIGIN + "/api/post", { method: "PUT", headers: mutationHeaders, body: updateBody });
+      assert.equal(updated.status, 200); assert.equal((await updated.json()).blob_sha, postSha);
+    }
+    assert.equal(postWrites, 1);
+    assert.equal(postContent, "# 수정 제목\r\n\r\n수정 본문\r\n");
+    const deleteBody = JSON.stringify({ request_id: crypto.randomUUID(), path: postPath, sha: postSha });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const deleted = await mf.dispatchFetch(ORIGIN + "/api/post", { method: "DELETE", headers: mutationHeaders, body: deleteBody });
+      assert.equal(deleted.status, 200); assert.equal((await deleted.json()).deleted, true);
+    }
+    assert.equal(postWrites, 2);
+    const afterDelete = await mf.dispatchFetch(ORIGIN + "/api/posts", { headers: { Cookie: cookie } });
+    assert.deepEqual((await afterDelete.json()).posts, []);
     redirectUpstream = true;
     const retry = await mf.dispatchFetch(ORIGIN + "/auth/login", { redirect: "manual" });
     const retryState = new URL(retry.headers.get("Location")).searchParams.get("state");

@@ -16,10 +16,9 @@ nav = [
   {"H O M E" = "index.md"},
   {"W R I T E" = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev/write/"},
   {"P O S T" = [
+    # BEGIN GENERATED POSTS
     "posts/index.md",
-    "posts/2025-12-8.md",
-    "posts/2025-1-22.md",
-    "posts/2024-12-12.md",
+    # END GENERATED POSTS
   ]}
 ]
 

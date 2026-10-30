@@ -218,7 +218,116 @@ async function readPost(req) {
 
 function publication(post, sha) {
   const slug = post.path.slice("docs/posts/".length, -3);
-  return { sha, url: `${BLOG}/posts/${slug}/`, commit_url: `https://github.com/${REPO}/commit/${sha}` };
+  return { path: post.path, sha, url: `${BLOG}/posts/${slug}/`, commit_url: `https://github.com/${REPO}/commit/${sha}` };
+}
+
+export function validManagedPath(path) {
+  return typeof path === "string" && /^docs\/posts\/[A-Za-z0-9][A-Za-z0-9_-]{0,247}\.md$/.test(path) && path !== "docs/posts/index.md";
+}
+
+export function splitPost(content, fallback = "") {
+  const heading = /^# ([^\r\n]+)(?:\r?\n|$)/m.exec(content);
+  if (!heading) return { title: fallback, body: content, prefix: "", newline: content.includes("\r\n") ? "\r\n" : "\n" };
+  return { title: heading[1], body: content.slice(heading.index + heading[0].length).replace(/^\r?\n/, ""), prefix: content.slice(0, heading.index), newline: content.includes("\r\n") ? "\r\n" : "\n" };
+}
+
+async function readRepositoryPost(token, path) {
+  const response = await github(token, `/repos/${REPO}/contents/${path}?ref=main`);
+  if (response.status === 404) return null;
+  const file = await githubData(response);
+  if (file.type !== "file" || file.encoding !== "base64" || typeof file.content !== "string" || file.size > 1024 * 1024 || !SHA.test(file.sha || "")) throw new Problem(422, "이 글의 파일 형식이나 크기는 편집기에서 지원하지 않습니다.");
+  let content;
+  try { content = new TextDecoder("utf-8", { fatal: true }).decode(unb64(file.content.replace(/\s/g, ""))); }
+  catch { throw new Problem(422, "UTF-8 형식의 게시물만 편집할 수 있습니다."); }
+  return { ...splitPost(content, path.slice(11, -3)), path, sha: file.sha, content };
+}
+
+async function cacheTitle(env, path, sha, title) {
+  await env.DB.prepare("INSERT INTO publisher_titles (path, blob_sha, title) VALUES (?1, ?2, ?3) ON CONFLICT(path) DO UPDATE SET blob_sha = excluded.blob_sha, title = excluded.title").bind(path, sha, title).run();
+}
+
+async function listPosts(env, user) {
+  const files = await githubData(await github(user.token, `/repos/${REPO}/contents/docs/posts?ref=main`));
+  if (!Array.isArray(files)) throw new Problem(502, "게시물 목록을 확인하지 못했습니다.");
+  const cached = (await env.DB.prepare("SELECT path, blob_sha, title FROM publisher_titles").all()).results;
+  const titles = new Map(cached.map(row => [row.path, row]));
+  const posts = files.filter(file => file.type === "file" && validManagedPath(file.path)).sort((a, b) => b.name.localeCompare(a.name));
+  // Warm a bounded number of legacy titles; new titles are cached on read/write.
+  let remaining = 10;
+  const result = [];
+  for (const file of posts) {
+    let title = titles.get(file.path);
+    if ((!title || title.blob_sha !== file.sha) && remaining-- > 0) {
+      try {
+        const post = await readRepositoryPost(user.token, file.path);
+        if (!post) continue;
+        await cacheTitle(env, file.path, post.sha, post.title);
+        title = { title: post.title, blob_sha: post.sha };
+      } catch (error) { if (!(error instanceof Problem) || error.status !== 422) throw error; }
+    }
+    result.push({ path: file.path, sha: file.sha, title: title?.blob_sha === file.sha ? title.title : file.name.slice(0, -3) });
+  }
+  return json({ posts: result });
+}
+
+async function loadPost(env, user, url) {
+  const path = url.searchParams.get("path");
+  if (!validManagedPath(path)) throw new Problem(400, "편집할 게시물 경로가 올바르지 않습니다.");
+  const post = await readRepositoryPost(user.token, path);
+  if (!post) throw new Problem(404, "글이 삭제됐거나 존재하지 않습니다. 목록을 새로 불러오세요.");
+  await cacheTitle(env, post.path, post.sha, post.title);
+  return json({ path: post.path, sha: post.sha, title: post.title, body: post.body });
+}
+
+async function previousOperationCommit(token, operation) {
+  const commits = await githubData(await github(token, `/repos/${REPO}/commits?sha=main&path=${encodeURIComponent(operation.path)}&per_page=10`));
+  return commits.find(commit => SHA.test(commit.sha || "") && commit.commit?.message?.endsWith(`[write:${operation.request_id}]`))?.sha || null;
+}
+
+function operationResult(operation, sha, blobSha) {
+  return { ...publication(operation, sha), blob_sha: blobSha || null, deleted: operation.kind === "delete", ...(operation.kind === "delete" ? { url: `${BLOG}/posts/` } : {}) };
+}
+
+async function managePost(req, env, user) {
+  checkMutation(req, env, user);
+  const data = await readPost(req);
+  const deleting = req.method === "DELETE";
+  const allowed = deleting ? ["request_id", "path", "sha"] : ["request_id", "path", "sha", "title", "body"];
+  if (!data || typeof data !== "object" || Object.keys(data).some(key => !allowed.includes(key)) || !UUID.test(data.request_id || "") || !validManagedPath(data.path) || !SHA.test(data.sha || "") || (!deleting && !validPost({ request_id: data.request_id, title: data.title, body: data.body }))) throw new Problem(400, "게시물 경로·버전·내용을 확인하세요.");
+  const kind = deleting ? "delete" : "update";
+  const digest = await hash(JSON.stringify([data.path, data.sha, kind, deleting ? null : data.title.trim(), deleting ? null : data.body]));
+  await env.DB.prepare("INSERT OR IGNORE INTO publisher_operations (request_id, user_id, path, kind, expected_sha, content_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+    .bind(data.request_id, user.user_id, data.path, kind, data.sha, digest, now()).run();
+  const operation = await env.DB.prepare("SELECT * FROM publisher_operations WHERE request_id = ?1").bind(data.request_id).first();
+  if (operation.user_id !== user.user_id || operation.path !== data.path || operation.kind !== kind || operation.content_hash !== digest) throw new Problem(409, "다른 작업에 사용된 요청입니다. 글을 다시 불러온 뒤 시도하세요.");
+  if (operation.commit_sha) return json(operationResult(operation, operation.commit_sha, operation.blob_sha));
+  const current = await readRepositoryPost(user.token, data.path);
+  if (!current || current.sha !== data.sha) {
+    const recovered = await previousOperationCommit(user.token, operation);
+    if (recovered) {
+      await env.DB.prepare("UPDATE publisher_operations SET commit_sha = ?1 WHERE request_id = ?2").bind(recovered, data.request_id).run();
+      return json(operationResult(operation, recovered, null));
+    }
+    throw new Problem(current ? 409 : 404, current ? "다른 곳에서 글이 변경됐습니다. 초안은 유지됩니다. 글을 다시 불러온 뒤 수정·삭제하세요." : "글이 이미 삭제됐거나 존재하지 않습니다. 목록을 새로 불러오세요.");
+  }
+  const content = deleting ? null : `${current.prefix}# ${data.title.trim()}${current.newline}${current.newline}${data.body.replace(/\r?\n/g, current.newline)}`;
+  if (!deleting && content === current.content) return json({ unchanged: true, path: data.path, blob_sha: current.sha, url: publication(operation, "").url });
+  const response = await github(user.token, `/repos/${REPO}/contents/${data.path}`, {
+    method: deleting ? "DELETE" : "PUT",
+    body: JSON.stringify({ branch: "main", sha: data.sha, message: `[blog ${kind}] ${deleting ? current.title : data.title.trim()} [write:${data.request_id}]`, ...(!deleting ? { content: b64(enc.encode(content)) } : {}) }),
+  });
+  let result;
+  if ([409, 422, 404].includes(response.status)) {
+    const recovered = await previousOperationCommit(user.token, operation);
+    if (!recovered) throw new Problem(409, "글이 변경됐거나 삭제됐습니다. 다시 불러온 뒤 시도하세요.");
+    result = { commit: { sha: recovered } };
+  } else result = await githubData(response);
+  if (!SHA.test(result.commit?.sha || "")) throw new Problem(502, "커밋 결과를 확인하지 못했습니다. 같은 요청으로 다시 시도하세요.");
+  const blobSha = SHA.test(result.content?.sha || "") ? result.content.sha : null;
+  await env.DB.prepare("UPDATE publisher_operations SET commit_sha = ?1, blob_sha = ?2 WHERE request_id = ?3").bind(result.commit.sha, blobSha, data.request_id).run();
+  if (deleting) await env.DB.prepare("DELETE FROM publisher_titles WHERE path = ?1").bind(data.path).run();
+  else if (blobSha) await cacheTitle(env, data.path, blobSha, data.title.trim());
+  return json(operationResult(operation, result.commit.sha, blobSha));
 }
 
 async function recoverCommit(token, post, content) {
@@ -296,6 +405,9 @@ async function route(req, env) {
   if (url.pathname === "/api/images" && req.method === "POST") return uploadImage(req, env, user);
   if (url.pathname.startsWith("/media/") && req.method === "GET") return imagePreview(url, user);
   if (url.pathname === "/api/posts" && req.method === "POST") return publish(req, env, user);
+  if (url.pathname === "/api/posts" && req.method === "GET") return listPosts(env, user);
+  if (url.pathname === "/api/post" && req.method === "GET") return loadPost(env, user, url);
+  if (url.pathname === "/api/post" && ["PUT", "DELETE"].includes(req.method)) return managePost(req, env, user);
   if (url.pathname === "/api/deployment" && req.method === "GET") return deployment(url, user);
   if (url.pathname === "/auth/logout" && req.method === "POST") {
     checkMutation(req, env, user);

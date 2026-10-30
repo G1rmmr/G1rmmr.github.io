@@ -49,10 +49,48 @@
     const preview = root.querySelector("#post-preview");
     const status = root.querySelector("#editor-status");
     const publishButton = root.querySelector("#post-publish");
+    const postSelect = root.querySelector("#post-select");
+    const loadButton = root.querySelector("#post-load");
+    const deleteButton = root.querySelector("#post-delete");
+    const mode = root.querySelector("#post-mode");
     const images = root.querySelector("#post-images");
     const imageStatus = root.querySelector("#image-status");
+    const confirmation = root.querySelector("#post-confirm");
+    function ask(message, label = "확인") {
+      root.querySelector("#post-confirm-message").textContent = message;
+      const accept = root.querySelector("#post-confirm-accept");
+      accept.textContent = label;
+      return new Promise(resolve => {
+        const finish = value => { confirmation.close(); resolve(value); };
+        accept.onclick = () => finish(true);
+        root.querySelector("#post-confirm-cancel").onclick = () => finish(false);
+        confirmation.oncancel = event => { event.preventDefault(); finish(false); };
+        confirmation.showModal();
+      });
+    }
     let submission = null;
+    let active = null;
+    let deletion = null;
+    let baseline = JSON.stringify(["", ""]);
     let busy = false;
+    const managedPath = path => typeof path === "string" && /^docs\/posts\/[A-Za-z0-9][A-Za-z0-9_-]{0,247}\.md$/.test(path) && path !== "docs/posts/index.md";
+    const fingerprint = () => JSON.stringify([title.value, body.value]);
+    function controls() {
+      publishButton.textContent = active ? "수정 게시" : "게시";
+      deleteButton.hidden = !active;
+      mode.textContent = active ? `수정 중 · ${active.path.slice(11)}` : "새 글";
+      for (const element of [publishButton, loadButton, postSelect, title, body, images]) element.disabled = busy;
+      deleteButton.disabled = busy || !active;
+    }
+    function setBusy(value) { busy = value; controls(); }
+    function restore(draft) {
+      if (!draft || ![draft.title, draft.body].every(value => typeof value === "string")) return;
+      title.value = draft.title; body.value = draft.body;
+      if (managedPath(draft.active?.path) && /^[0-9a-f]{40}$/.test(draft.active.sha || "")) active = draft.active;
+      if (draft.submission && typeof draft.submission.id === "string" && typeof draft.submission.fingerprint === "string") submission = draft.submission;
+      if (draft.deletion?.path === active?.path) deletion = draft.deletion;
+      if (typeof draft.baseline === "string") baseline = draft.baseline;
+    }
     let session;
     try {
       const response = await window.fetch("/api/session", { credentials: "same-origin", cache: "no-store" });
@@ -68,10 +106,10 @@
     }
     root.hidden = false;
     try {
-      const draft = JSON.parse(localStorage.getItem(key));
+      const selected = localStorage.getItem(`${key}:selected`);
+      const draft = JSON.parse(localStorage.getItem(managedPath(selected) ? `${key}:${selected}` : key));
       if (draft && [draft.title, draft.body].every(value => typeof value === "string")) {
-        title.value = draft.title; body.value = draft.body;
-        if (draft.submission && typeof draft.submission.id === "string" && typeof draft.submission.fingerprint === "string") submission = draft.submission;
+        restore(draft);
         status.textContent = "임시저장한 글을 복원했습니다.";
       }
     } catch { status.textContent = "브라우저의 임시저장을 사용할 수 없습니다."; }
@@ -111,16 +149,70 @@
     }
     function save(quiet = false) {
       try {
-        localStorage.setItem(key, JSON.stringify({ title: title.value, submission, body: body.value }));
+        localStorage.setItem(active ? `${key}:${active.path}` : key, JSON.stringify({ title: title.value, submission, active, deletion, baseline, body: body.value }));
+        localStorage.setItem(`${key}:selected`, active?.path || "");
         if (!quiet) status.textContent = "이 브라우저에 임시저장했습니다.";
       } catch { status.textContent = "임시저장에 실패했습니다. 브라우저 저장 공간을 확인하세요."; }
     }
     root.addEventListener("input", () => { render(); save(); });
     root.querySelector("#post-save").addEventListener("click", () => save());
 
+    async function getPost(path) {
+      const response = await window.fetch(`/api/post?path=${encodeURIComponent(path)}`, { credentials: "same-origin", cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "게시물을 불러오지 못했습니다.");
+      return result;
+    }
+    async function refreshPosts() {
+      const selected = active?.path || postSelect.value || "";
+      const response = await window.fetch("/api/posts", { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok) throw new Error("게시물 목록을 불러오지 못했습니다.");
+      const result = await response.json();
+      const fresh = document.createElement("option"); fresh.value = ""; fresh.textContent = "새 글 작성";
+      postSelect.replaceChildren(fresh);
+      for (const post of result.posts) {
+        if (!managedPath(post.path)) continue;
+        const option = document.createElement("option"); option.value = post.path; option.textContent = post.title;
+        postSelect.append(option);
+      }
+      postSelect.value = selected;
+    }
+    function adopt(post) {
+      active = { path: post.path, sha: post.sha };
+      title.value = post.title; body.value = post.body;
+      baseline = fingerprint(); submission = null; deletion = null;
+      postSelect.value = post.path; render(); save(true); controls();
+    }
+    loadButton.addEventListener("click", async () => {
+      if (busy) return;
+      const path = postSelect.value;
+      if (fingerprint() !== baseline && !await ask("작성 중인 내용은 임시저장됩니다. 선택한 글을 불러오시겠습니까?", "불러오기")) { postSelect.value = active?.path || ""; return; }
+      save(true); setBusy(true);
+      try {
+        if (!path) {
+          active = null; submission = null; deletion = null; title.value = ""; body.value = ""; baseline = fingerprint();
+          try { restore(JSON.parse(localStorage.getItem(key))); } catch { /* Start empty when storage is unavailable. */ }
+          render(); save(true); status.textContent = "새 글 초안을 불러왔습니다.";
+        } else {
+          const post = await getPost(path);
+          let draft;
+          try { draft = JSON.parse(localStorage.getItem(`${key}:${path}`)); } catch { /* Load repository version. */ }
+          if (draft?.active?.path === path && typeof draft.baseline === "string" && JSON.stringify([draft.title, draft.body]) !== draft.baseline && await ask("이 글의 저장된 수정 초안을 불러오시겠습니까? 취소하면 서버의 최신 글을 불러옵니다.", "초안 복원")) {
+            active = null; submission = null; deletion = null; restore(draft); render(); save(true);
+            status.textContent = "수정 초안을 복원했습니다. 서버의 글이 변경됐다면 게시 시 충돌을 안내합니다.";
+          } else {
+            // Keep the previous edit draft recoverable when loading a newer version.
+            if (draft?.active?.path === path) try { localStorage.setItem(`${key}:previous:${path}`, JSON.stringify(draft)); } catch { /* Best effort only. */ }
+            adopt(post); status.textContent = "게시물을 불러왔습니다.";
+          }
+        }
+      } catch (error) { status.textContent = error.message; postSelect.value = active?.path || ""; }
+      finally { setBusy(false); }
+    });
+
     async function uploadImages(files) {
       if (busy || !files.length) return;
-      busy = true; publishButton.disabled = true; title.disabled = true; body.disabled = true; images.disabled = true;
+      setBusy(true);
       let inserted = 0;
       try {
         for (const file of files) {
@@ -138,7 +230,7 @@
         }
         imageStatus.textContent = `이미지 ${inserted}장 추가됨`;
       } catch (error) { imageStatus.textContent = error.message || "이미지 업로드에 실패했습니다."; }
-      finally { busy = false; publishButton.disabled = false; title.disabled = false; body.disabled = false; images.disabled = false; images.value = ""; }
+      finally { setBusy(false); images.value = ""; }
     }
     images.addEventListener("change", () => uploadImages(Array.from(images.files)));
     root.querySelector(".editor-image-add").addEventListener("keydown", event => {
@@ -172,7 +264,7 @@
           if (!response.ok) throw new Error();
           const deployment = await response.json();
           if (deployment.status === "success") {
-            showLink("배포가 완료됐습니다.", published.url, "게시물 열기"); return;
+            showLink(published.deleted ? "삭제가 블로그에 반영됐습니다." : "배포가 완료됐습니다.", published.url, published.deleted ? "게시물 목록 열기" : "게시물 열기"); return;
           }
           if (deployment.status === "failure") {
             showLink("커밋은 완료됐지만 블로그 배포가 실패했습니다.", deployment.workflow_url, "배포 로그 확인"); return;
@@ -192,30 +284,59 @@
         status.textContent = "TITLE과 CONTENT를 입력하세요."; return;
       }
       if (body.value.length > 200000) { status.textContent = "CONTENT는 200,000자 이하여야 합니다."; return; }
-      const fingerprint = JSON.stringify([title.value.trim(), body.value]);
-      if (!submission || submission.fingerprint !== fingerprint) submission = { id: window.crypto.randomUUID(), fingerprint };
+      const requestFingerprint = JSON.stringify([active?.path || "", active?.sha || "", title.value.trim(), body.value]);
+      if (!submission || submission.fingerprint !== requestFingerprint) submission = { id: window.crypto.randomUUID(), fingerprint: requestFingerprint };
       save(true);
-      busy = true; publishButton.disabled = true; title.disabled = true; body.disabled = true;
+      const wasNew = !active;
+      setBusy(true);
       status.textContent = "게시물을 main에 커밋하는 중…";
       try {
-        const response = await window.fetch("/api/posts", {
-          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrf },
-          body: JSON.stringify({ request_id: submission.id, title: title.value.trim(), body: body.value }),
+        const response = await window.fetch(active ? "/api/post" : "/api/posts", {
+          method: active ? "PUT" : "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrf },
+          body: JSON.stringify({ request_id: submission.id, title: title.value.trim(), body: body.value, ...(active ? { path: active.path, sha: active.sha } : {}) }),
         });
         if (response.status === 401) {
           showLink("로그인이 만료됐습니다. 초안을 저장한 뒤 다시 로그인하세요.", "/auth/login", "GitHub 로그인"); return;
         }
         const result = await response.json();
         if (!response.ok) { status.textContent = result.error || "게시하지 못했습니다. 다시 시도하세요."; return; }
+        if (result.unchanged) { baseline = fingerprint(); save(true); status.textContent = "변경된 내용이 없습니다."; return; }
         submission.published = result;
         save(true);
+        if (managedPath(result.path)) {
+          try {
+            const post = await getPost(result.path);
+            adopt(post);
+            if (wasNew) try { localStorage.setItem(key, JSON.stringify({ title: "", body: "" })); } catch { /* The published draft remains recoverable. */ }
+            await refreshPosts();
+          } catch { /* A committed post can be reloaded from the list later. */ }
+        }
         await watchDeployment(result);
       } catch {
         status.textContent = "게시 결과를 확인하지 못했습니다. 같은 내용으로 다시 누르면 중복 글 없이 확인합니다.";
       } finally {
-        busy = false; publishButton.disabled = false; title.disabled = false; body.disabled = false;
+        setBusy(false);
       }
     });
+    deleteButton.addEventListener("click", async () => {
+      if (busy || !active) return;
+      if (!await ask(`「${title.value || active.path}」 글을 삭제하시겠습니까?\n${active.path}\n삭제 후 블로그 배포가 실행됩니다.`, "삭제")) return;
+      if (!deletion || deletion.path !== active.path || deletion.sha !== active.sha) deletion = { id: window.crypto.randomUUID(), path: active.path, sha: active.sha };
+      save(true); setBusy(true); status.textContent = "삭제를 main에 반영하는 중…";
+      try {
+        const response = await window.fetch("/api/post", { method: "DELETE", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrf }, body: JSON.stringify({ request_id: deletion.id, path: deletion.path, sha: deletion.sha }) });
+        const result = await response.json();
+        if (!response.ok) { status.textContent = result.error || "삭제하지 못했습니다. 다시 시도하세요."; return; }
+        active = null; submission = null; deletion = null; title.value = ""; body.value = ""; baseline = fingerprint();
+        try { localStorage.setItem(`${key}:selected`, ""); } catch { /* Session state still clears. */ }
+        render(); controls();
+        try { await refreshPosts(); } catch { /* Deletion is already committed. */ }
+        await watchDeployment(result);
+      } catch { status.textContent = "삭제 결과를 확인하지 못했습니다. 다시 누르면 같은 요청의 결과를 확인합니다."; }
+      finally { setBusy(false); }
+    });
+    controls();
+    void refreshPosts().catch(error => { status.textContent = error.message; });
     render();
   }
   if (typeof document$ !== "undefined") document$.subscribe(initialize);

@@ -13,8 +13,9 @@ function environment() {
   const db = new DatabaseSync(":memory:");
   db.exec(readFileSync(new URL("../analytics-worker/migrations/0001_views.sql", import.meta.url), "utf8"));
   db.exec(readFileSync(new URL("../analytics-worker/migrations/0002_publishing.sql", import.meta.url), "utf8"));
+  db.exec(readFileSync(new URL("../analytics-worker/migrations/0004_post_management.sql", import.meta.url), "utf8"));
   return { PUBLISHER_ORIGIN: ORIGIN, GITHUB_OWNER_ID: ID, GITHUB_CLIENT_ID: "Iv1.test", GITHUB_CLIENT_SECRET: "test-secret", TOKEN_ENCRYPTION_KEY: btoa("x".repeat(32)), ASSETS: { fetch: async () => new Response("PRIVATE EDITOR") }, db,
-    DB: { prepare: sql => { const stmt = db.prepare(sql.replace(/\?\d+/g, "?")); let values = []; return { bind(...args) { values = args; return this; }, async run() { return stmt.run(...values); }, async first() { return stmt.get(...values) ?? null; } }; }, batch: statements => Promise.all(statements.map(s => s.run())) } };
+    DB: { prepare: sql => { const stmt = db.prepare(sql.replace(/\?\d+/g, "?")); let values = []; return { bind(...args) { values = args; return this; }, async run() { return stmt.run(...values); }, async first() { return stmt.get(...values) ?? null; }, async all() { return { results: stmt.all(...values) }; } }; }, batch: statements => Promise.all(statements.map(s => s.run())) } };
 }
 async function authenticated(env, userId = ID) {
   const cookie = "s".repeat(43); const csrf = "csrf-test";
@@ -180,4 +181,96 @@ test("identical images reuse a content-addressed path without duplicate commits"
     assert.equal(one.status, 200); assert.equal(two.status, 200);
     assert.deepEqual(await one.json(), await two.json()); assert.equal(writes, 1);
   });
+});
+
+const PATH = "docs/posts/2025-12-8.md";
+const OLD = "b".repeat(40);
+const NEW = "c".repeat(40);
+const fileResponse = (content, sha = OLD) => response({ type: "file", encoding: "base64", content: Buffer.from(content).toString("base64"), size: Buffer.byteLength(content), sha });
+
+test("lists all legacy and new posts by title, excluding generated index", async () => {
+  const env = environment(); const headers = await authenticated(env);
+  await upstream(async url => url.endsWith("/contents/docs/posts?ref=main")
+    ? response([{ path: PATH, name: "2025-12-8.md", type: "file", sha: OLD }, { path: "docs/posts/index.md", name: "index.md", type: "file", sha: OLD }])
+    : fileResponse("# 실제 제목\n\n본문\n"), async () => {
+    const list = await call(env, "/api/posts", { headers });
+    assert.deepEqual((await list.json()).posts, [{ path: PATH, sha: OLD, title: "실제 제목" }]);
+    const loaded = await call(env, `/api/post?path=${PATH}`, { headers });
+    assert.deepEqual(await loaded.json(), { path: PATH, sha: OLD, title: "실제 제목", body: "본문\n" });
+  });
+});
+
+test("updates preserve metadata, newline format and path, and safely reject stale versions", async () => {
+  const env = environment(); const headers = await authenticated(env);
+  let content = "---\r\ndate: 2025-12-08\r\n---\r\n\r\n# 제목\r\n\r\n본문\r\n";
+  let sha = OLD; let writes = 0;
+  await upstream(async (url, options) => {
+    if (url.includes("/commits?")) return response([]);
+    if (options.method === "PUT") {
+      const data = JSON.parse(options.body); writes++;
+      assert.equal(data.branch, "main"); assert.equal(data.sha, OLD);
+      content = Buffer.from(data.content, "base64").toString(); sha = NEW;
+      assert.equal(content, "---\r\ndate: 2025-12-08\r\n---\r\n\r\n# 수정 제목\r\n\r\n수정 본문\r\n");
+      return response({ commit: { sha: COMMIT }, content: { sha: NEW } });
+    }
+    return fileResponse(content, sha);
+  }, async () => {
+    const body = JSON.stringify({ request_id: REQUEST, path: PATH, sha: OLD, title: "수정 제목", body: "수정 본문\n" });
+    for (let i = 0; i < 2; i++) {
+      const result = await call(env, "/api/post", { method: "PUT", headers, body });
+      assert.equal(result.status, 200); assert.equal((await result.json()).blob_sha, NEW);
+    }
+    assert.equal(writes, 1);
+    const conflict = await call(env, "/api/post", { method: "PUT", headers, body: JSON.stringify({ request_id: crypto.randomUUID(), path: PATH, sha: OLD, title: "다른 수정", body: "본문" }) });
+    assert.equal(conflict.status, 409); assert.equal(writes, 1);
+  });
+});
+
+test("deletion requires the exact loaded version and is retry-safe", async () => {
+  const env = environment(); const headers = await authenticated(env); let deletes = 0;
+  await upstream(async (url, options) => {
+    if (url.includes("/commits?")) return response([]);
+    if (options.method === "DELETE") { deletes++; const body = JSON.parse(options.body); assert.equal(body.sha, OLD); assert.equal(body.branch, "main"); return response({ commit: { sha: COMMIT }, content: null }); }
+    return fileResponse("# 제목\n\n본문\n");
+  }, async () => {
+    const body = JSON.stringify({ request_id: REQUEST, path: PATH, sha: OLD });
+    for (let i = 0; i < 2; i++) {
+      const result = await call(env, "/api/post", { method: "DELETE", headers, body });
+      assert.equal(result.status, 200); const data = await result.json(); assert.equal(data.deleted, true); assert.equal(data.url, "https://g1rmmr.github.io/posts/");
+    }
+    assert.equal(deletes, 1);
+    const stale = await call(env, "/api/post", { method: "DELETE", headers, body: JSON.stringify({ request_id: crypto.randomUUID(), path: PATH, sha: NEW }) });
+    assert.equal(stale.status, 409); assert.equal(deletes, 1);
+  });
+});
+
+test("lost mutation responses recover their own commit without overwriting or deleting twice", async () => {
+  for (const method of ["PUT", "DELETE"]) {
+    const env = environment(); const headers = await authenticated(env); let changed = false; let mutations = 0;
+    await upstream(async (url, options) => {
+      if (url.includes("/commits?")) return response([{ sha: COMMIT, commit: { message: `action [write:${REQUEST}]` } }]);
+      if (options.method === method) { mutations++; changed = true; throw new Error("response lost"); }
+      if (changed && method === "DELETE") return response({}, 404);
+      return fileResponse(changed ? "# 수정\n\n본문\n" : "# 원본\n\n본문\n", changed ? NEW : OLD);
+    }, async () => {
+      const body = JSON.stringify({ request_id: REQUEST, path: PATH, sha: OLD, ...(method === "PUT" ? { title: "수정", body: "본문\n" } : {}) });
+      assert.equal((await call(env, "/api/post", { method, headers, body })).status, 503);
+      const retry = await call(env, "/api/post", { method, headers, body });
+      assert.equal(retry.status, 200); assert.equal((await retry.json()).sha, COMMIT); assert.equal(mutations, 1);
+    });
+  }
+});
+
+test("post management rejects unauthenticated users, CSRF and paths outside posts", async () => {
+  const env = environment(); const headers = await authenticated(env);
+  assert.equal((await call(env, "/api/posts")).status, 401);
+  assert.equal((await call(env, `/api/post?path=${PATH}`)).status, 401);
+  for (const method of ["PUT", "DELETE"]) {
+    const body = JSON.stringify({ request_id: REQUEST, path: PATH, sha: OLD });
+    assert.equal((await call(env, "/api/post", { method, body, headers: { ...headers, "X-CSRF-Token": "wrong" } })).status, 403);
+    for (const path of ["docs/posts/index.md", "../secrets", "zensical.toml", "docs/posts/a/other.md", "docs/posts/a%2Fb.md"]) {
+      const result = await call(env, "/api/post", { method, headers, body: JSON.stringify({ request_id: REQUEST, path, sha: OLD }) });
+      assert.equal(result.status, 400);
+    }
+  }
 });

@@ -3,6 +3,7 @@ site/
 .cache/
 .wrangler/
 __pycache__/
+.zensical-build.toml
 .DS_Store
 analytics-worker/target/
 analytics-worker/build/
