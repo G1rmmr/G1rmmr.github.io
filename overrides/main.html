@@ -7,7 +7,11 @@
 {% endblock %}
 
 {% block content %}
-  {{ super() }}
+  {% if page and page.url == 'write/' %}
+    {{ page.content }}
+  {% else %}
+    {{ super() }}
+  {% endif %}
   {% if page and page.url and 'posts/' in page.url and page.url != 'posts/' %}
     <p class="blog-views" role="status" aria-live="polite" data-post-views>조회수는 게시된 블로그에서 확인할 수 있습니다.</p>
   {% endif %}

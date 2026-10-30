@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+import { webcrypto } from "node:crypto";
 
 const source = readFileSync(new URL("../docs/javascripts/editor.js", import.meta.url), "utf8");
 
@@ -19,23 +20,22 @@ class Element {
 
 function editor({ saved = null, blocked = false } = {}) {
   const root = new Element();
-  const fields = Object.fromEntries(["post-title", "post-slug", "post-body", "post-preview", "editor-status", "post-save", "post-download"].map(id => [id, new Element()]));
-  const buttons = ["heading", "bold", "italic", "link", "list", "code"].map(format => { const e = new Element("button"); e.dataset.format = format; return e; });
+  const fields = Object.fromEntries(["post-title", "post-body", "post-preview", "editor-status", "post-save", "post-publish"].map(id => [id, new Element()]));
   root.querySelector = selector => fields[selector.slice(1)];
-  root.querySelectorAll = () => buttons;
-  const storage = new Map(saved ? [["realm-post-draft-v1", JSON.stringify(saved)]] : []);
+  const storage = new Map(saved ? [["realm-post-draft-v2", JSON.stringify(saved)]] : []);
   const blobs = [];
+  const opened = [];
   const document = {
     readyState: "complete", body: new Element("body"), getElementById: () => root,
     createElement: tag => new Element(tag), createTextNode: text => ({ textContent: text }),
   };
   class BlobURL extends URL { static createObjectURL(blob) { blobs.push(blob); return "blob:test"; } static revokeObjectURL() {} }
-  const window = { location: new URL("https://example.com/write/"), setTimeout: fn => fn() };
+  const window = { location: new URL("https://example.com/write/"), crypto: webcrypto, open: (...args) => opened.push(args), setTimeout: fn => fn() };
   const localStorage = { getItem: key => { if (blocked) throw Error(); return storage.get(key) ?? null; }, setItem: (key, value) => { if (blocked) throw Error(); storage.set(key, value); } };
   const context = vm.createContext({ window, document, localStorage, URL: BlobURL, Blob });
   const execute = () => vm.runInContext(source, context);
   execute();
-  return { root, fields, buttons, storage, blobs, execute };
+  return { root, fields, storage, blobs, opened, execute };
 }
 
 function descendants(node) { return [node, ...(node.children ?? []).flatMap(descendants)]; }
@@ -50,26 +50,35 @@ test("restores draft, renders safe nodes and keeps script URLs inert", () => {
   assert.equal(e.fields["post-title"].value, "<img onerror=alert(1)>");
 });
 
-test("formats selection, saves draft, and exports exact Markdown content", async () => {
+test("starts blank and publishes exact Markdown with a stable automatic filename", () => {
   const e = editor();
+  assert.equal(e.fields["post-title"].value, "");
+  assert.equal(e.fields["post-body"].value, "");
+  assert.equal(e.fields["post-preview"].children.length, 0);
   e.fields["post-title"].value = "테스트";
-  e.fields["post-slug"].value = "new-post";
-  const body = e.fields["post-body"]; body.value = "내용"; body.setSelectionRange(0, 2);
-  e.buttons.find(b => b.dataset.format === "bold").click();
-  assert.equal(body.value, "**내용**");
-  assert.equal(JSON.parse(e.storage.get("realm-post-draft-v1")).body, "**내용**");
-  e.fields["post-download"].click();
-  assert.equal(await e.blobs[0].text(), "# 테스트\n\n**내용**\n");
+  e.fields["post-body"].value = "**내용**";
+  e.root.events.input();
+  assert.equal(JSON.parse(e.storage.get("realm-post-draft-v2")).body, "**내용**");
+  e.fields["post-publish"].click();
+  const url = new URL(e.opened[0][0]);
+  assert.equal(url.origin, "https://github.com");
+  assert.equal(url.pathname, "/G1rmmr/G1rmmr.github.io/new/main");
+  assert.match(url.searchParams.get("filename"), /^docs\/posts\/\d{4}-\d{2}-\d{2}-[0-9a-f-]{36}\.md$/);
+  assert.equal(url.searchParams.get("value"), "# 테스트\n\n**내용**\n");
+  e.fields["post-publish"].click();
+  assert.equal(new URL(e.opened[1][0]).searchParams.get("filename"), url.searchParams.get("filename"));
+  assert.equal(e.blobs.length, 0);
   assert.equal(e.fields["post-preview"].children[0].textContent, "테스트");
 });
 
-test("invalid filename blocks export and unavailable storage still allows file export", () => {
+test("empty fields block publication and long posts are never truncated even with blocked storage", async () => {
   const e = editor({ blocked: true });
-  e.fields["post-title"].value = "제목"; e.fields["post-body"].value = "본문";
-  e.fields["post-slug"].value = "../other";
-  e.fields["post-download"].click();
+  e.fields["post-publish"].click();
+  assert.equal(e.opened.length, 0);
   assert.equal(e.blobs.length, 0);
-  e.fields["post-slug"].value = "valid-post";
-  e.fields["post-download"].click();
+  e.fields["post-title"].value = "제목"; e.fields["post-body"].value = "본문".repeat(4000);
+  e.fields["post-publish"].click();
   assert.equal(e.blobs.length, 1);
+  assert.equal(await e.blobs[0].text(), `# 제목\n\n${"본문".repeat(4000)}\n`);
+  assert.equal(e.opened[0][0], "https://github.com/G1rmmr/G1rmmr.github.io/upload/main/docs/posts");
 });
