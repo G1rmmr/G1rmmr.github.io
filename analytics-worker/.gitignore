@@ -1,0 +1,9 @@
+/target/
+/node_modules/
+/build/
+/.wrangler/
+/.dev.vars
+/.env
+/.env.*
+__pycache__/
+/.test-*/

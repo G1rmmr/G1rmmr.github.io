@@ -1,0 +1,23 @@
+name = "g1rmmr-blog-views"
+main = "build/index.js"
+compatibility_date = "2026-10-21"
+
+# Enable only after creating D1 and applying migrations; see the root README.
+workers_dev = true
+preview_urls = false
+
+[build]
+command = "worker-build --release"
+
+[vars]
+ALLOWED_ORIGIN = "https://g1rmmr.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "g1rmmr-blog-views"
+database_id = "094f39a7-3666-4137-ba7d-0677649e7433"
+migrations_dir = "migrations"
+
+# The application does not log request details or payloads.
+[observability]
+enabled = false

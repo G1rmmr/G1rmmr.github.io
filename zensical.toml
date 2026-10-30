@@ -2,6 +2,7 @@
 site_name = "R E A L M"
 site_description = "Welcome to my place."
 site_author = "John Nam"
+site_url = "https://g1rmmr.github.io/"
 
 copyright = "&copy; 2025 John Nam"
 
@@ -9,6 +10,7 @@ docs_dir = "docs"
 site_dir = "site"
 
 extra_css = ["stylesheets/extra.css"]
+extra_javascript = ["javascripts/pageviews.js"]
 
 nav = [
   {"H O M E" = "index.md"},
@@ -21,6 +23,7 @@ nav = [
 
 [project.theme]
 variant = "modern"
+custom_dir = "overrides"
 favicon = "img/favicon.png"
 language = "en"
 logo = "img/favicon.png"
@@ -42,3 +45,7 @@ primary = "custom"
 
 [project.extra]
 generator = false
+
+[project.extra.pageviews]
+# Set this to the deployed Rust Worker's /views URL to enable recording.
+endpoint = "https://g1rmmr-blog-views.blckhnd-std.workers.dev/views"

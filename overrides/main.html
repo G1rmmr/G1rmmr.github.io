@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <meta name="blog-pageviews-endpoint" content="{{ config.extra.pageviews.endpoint | e }}">
+  <meta name="blog-pageviews-origin" content="{{ config.site_url | e }}">
+{% endblock %}
