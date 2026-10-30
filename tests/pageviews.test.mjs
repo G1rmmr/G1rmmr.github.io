@@ -11,6 +11,7 @@ function browser({ endpoint = "https://counter.example.workers.dev/views", origi
   const listeners = new Map();
   const timers = [];
   const subscribers = [];
+  const counter = { textContent: "조회수 확인 중…" };
   const window = {
     location: new URL(url),
     crypto,
@@ -25,7 +26,7 @@ function browser({ endpoint = "https://counter.example.workers.dev/views", origi
   const document = {
     readyState,
     visibilityState: hidden ? "hidden" : "visible",
-    querySelector: selector => ({ content: selector.includes("endpoint") ? endpoint : origin }),
+    querySelector: selector => selector === "[data-post-views]" ? counter : ({ content: selector.includes("endpoint") ? endpoint : origin }),
     addEventListener: (name, callback) => { listeners.set(name, callback); },
   };
   const globals = { window, document, URL, Uint8Array };
@@ -36,7 +37,7 @@ function browser({ endpoint = "https://counter.example.workers.dev/views", origi
   const execute = () => vm.runInContext(source, context);
   execute();
   return {
-    window, document, calls, timers, listeners, subscribers, execute,
+    window, document, calls, timers, listeners, subscribers, execute, counter,
     navigate: next => {
       window.location = new URL(next, window.location);
       subscribers.forEach(callback => callback());
@@ -153,4 +154,30 @@ test("uses Web Crypto for UUID fallback and remains inactive without it", () => 
   const fallback = browser({ crypto: { getRandomValues: values => webcrypto.getRandomValues(values) } });
   assert.match(bodies(fallback)[0].visit_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.equal(browser({ crypto: {} }).calls.length, 0);
+});
+
+test("shows the count returned by the database after recording", async () => {
+  const b = browser({ replies: [{ status: 200, json: async () => ({ path: "/posts/2025-12-8/", views: 1234 }) }] });
+  await settle();
+  assert.equal(b.counter.textContent, "조회수 1,234");
+  assert.equal(b.calls.length, 1);
+});
+
+test("does not show a previous post's delayed response on the next post", async () => {
+  let resolve;
+  const delayed = new Promise(done => { resolve = done; });
+  const b = browser({ replies: [{ status: 200, json: () => delayed }, { status: 200, json: async () => ({ path: "/posts/2024-12-12/", views: 7 }) }] });
+  b.navigate("/posts/2024-12-12/");
+  await settle();
+  resolve({ path: "/posts/2025-12-8/", views: 99 });
+  await settle();
+  assert.equal(b.counter.textContent, "조회수 7");
+});
+
+test("shows a failure instead of a fabricated count", async () => {
+  const b = browser({ replies: [{ status: 503 }, { status: 503 }] });
+  await settle();
+  b.timers.shift()();
+  await settle();
+  assert.equal(b.counter.textContent, "조회수를 불러오지 못했습니다.");
 });

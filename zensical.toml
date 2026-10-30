@@ -10,11 +10,13 @@ docs_dir = "docs"
 site_dir = "site"
 
 extra_css = ["stylesheets/extra.css"]
-extra_javascript = ["javascripts/pageviews.js"]
+extra_javascript = ["javascripts/pageviews.js", "javascripts/editor.js"]
 
 nav = [
   {"H O M E" = "index.md"},
+  {"W R I T E" = "write.md"},
   {"P O S T" = [
+    "posts/index.md",
     "posts/2025-12-8.md",
     "posts/2025-1-22.md",
     "posts/2024-12-12.md",

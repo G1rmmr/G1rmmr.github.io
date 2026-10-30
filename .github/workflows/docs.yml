@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: 3.x
       - run: pip install zensical
-      - run: zensical build --clean
+      - run: python scripts/build_blog.py
       - uses: actions/upload-pages-artifact@v4
         with:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}

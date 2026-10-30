@@ -2,3 +2,15 @@
     --md-primary-fg-color: #aaaaaa;
     --md-accent-fg-color: #ffffff;
 }
+
+.blog-views { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--md-default-fg-color--lightest); color: var(--md-default-fg-color--light); font-size: .75rem; }
+#blog-editor input, #blog-editor textarea { display: block; width: 100%; padding: .65rem; margin: .4rem 0 1rem; border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; background: var(--md-code-bg-color); color: var(--md-default-fg-color); font: inherit; }
+#blog-editor textarea { min-height: 24rem; resize: vertical; font-family: var(--md-code-font-family); font-size: .75rem; }
+.editor-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; align-items: center; }
+.editor-toolbar button { cursor: pointer; padding: .4rem .65rem; border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; color: var(--md-default-fg-color); }
+.editor-toolbar button:hover, .editor-toolbar button:focus-visible { background: var(--md-code-bg-color); outline: 2px solid var(--md-accent-fg-color); }
+.editor-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.2rem; }
+.editor-columns h2 { margin-top: 0; font-size: 1rem; }
+.editor-hint, #editor-status { font-size: .7rem; color: var(--md-default-fg-color--light); }
+#post-preview { overflow-wrap: anywhere; max-height: 38rem; overflow-y: auto; }
+@media (max-width: 800px) { .editor-columns { grid-template-columns: minmax(0, 1fr); } }

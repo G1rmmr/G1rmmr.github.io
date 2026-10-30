@@ -1,4 +1,4 @@
-/* Record post visits without adding or changing any visible page elements. */
+/* Record visits and show the database count below each post. */
 (() => {
   "use strict";
 
@@ -28,6 +28,14 @@
 
   window.__blogPageviewsInitialized = true;
   let lastPath = null;
+  let lastCount = null;
+  let version = 0;
+
+  function showCount(path, text) {
+    if (postPath() !== path) return;
+    const element = document.querySelector("[data-post-views]");
+    if (element) element.textContent = text;
+  }
 
   function postPath() {
     // Both directory URLs and direct index.html URLs identify the same post.
@@ -51,9 +59,15 @@
   function recordVisit() {
     if (document.visibilityState === "hidden") return;
     const path = postPath();
-    if (path === lastPath) return;
+    if (path === lastPath) {
+      if (lastCount !== null) showCount(path, lastCount);
+      return;
+    }
     lastPath = path;
+    lastCount = null;
+    const currentVersion = ++version;
     if (!path) return;
+    showCount(path, "조회수 확인 중…");
 
     const visitId = newVisitId();
     if (!visitId) return;
@@ -69,9 +83,25 @@
           referrerPolicy: "no-referrer",
           keepalive: true,
         });
+        if (currentVersion !== version) return;
+        if (response.status === 200) {
+          const data = await response.json();
+          if (currentVersion !== version) return;
+          if (data.path !== path || !Number.isSafeInteger(data.views) || data.views < 0) throw new Error("Invalid count");
+          if (postPath() === path) {
+            lastCount = `조회수 ${data.views.toLocaleString("ko-KR")}`;
+            showCount(path, lastCount);
+          }
+          return;
+        }
+        if (response.status < 500 || attempt !== 0) showCount(path, "조회수를 불러오지 못했습니다.");
         if (response.status < 500 || attempt !== 0) return;
       } catch {
-        if (attempt !== 0) return;
+        if (currentVersion !== version) return;
+        if (attempt !== 0) {
+          showCount(path, "조회수를 불러오지 못했습니다.");
+          return;
+        }
       }
       // Reuse the visit ID so a lost response cannot cause a second increment.
       window.setTimeout(() => { void send(1); }, 1500);
