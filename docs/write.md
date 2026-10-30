@@ -2,7 +2,6 @@
   <div class="editor-post-tools">
     <label for="post-select">POST</label>
     <select id="post-select"><option value="">새 글 작성</option></select>
-    <button type="button" id="post-load">불러오기</button>
     <span id="post-mode" role="status">새 글</span>
   </div>
   <label for="post-title">TITLE</label>
@@ -10,20 +9,18 @@
   <div class="editor-columns">
     <div>
       <label for="post-body">CONTENT</label>
-      <div class="editor-image-tools">
-        <label for="post-images" class="editor-image-add" role="button" tabindex="0">이미지 추가</label>
-        <input id="post-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
-        <span id="image-status" role="status" aria-live="polite">붙여넣기 · 끌어놓기</span>
-      </div>
       <textarea id="post-body" rows="20" spellcheck="false"></textarea>
     </div>
     <div><h2>PREVIEW</h2><div id="post-preview" class="md-typeset"></div></div>
   </div>
   <div class="editor-toolbar">
+    <button type="button" class="editor-image-add" aria-label="이미지 추가" title="이미지 추가">🖼️</button>
+    <input id="post-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
     <button type="button" id="post-save">임시저장</button>
     <button type="button" id="post-publish">게시</button>
     <button type="button" id="post-delete" hidden>삭제</button>
   </div>
+  <p id="image-status" role="status" aria-live="polite"></p>
   <p id="editor-status" role="status" aria-live="polite"></p>
   <dialog id="post-confirm" aria-labelledby="post-confirm-title">
     <h2 id="post-confirm-title">게시물 확인</h2>

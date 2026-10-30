@@ -50,7 +50,7 @@
     const status = root.querySelector("#editor-status");
     const publishButton = root.querySelector("#post-publish");
     const postSelect = root.querySelector("#post-select");
-    const loadButton = root.querySelector("#post-load");
+    const imageButton = root.querySelector(".editor-image-add");
     const deleteButton = root.querySelector("#post-delete");
     const mode = root.querySelector("#post-mode");
     const images = root.querySelector("#post-images");
@@ -79,7 +79,7 @@
       publishButton.textContent = active ? "수정 게시" : "게시";
       deleteButton.hidden = !active;
       mode.textContent = active ? `수정 중 · ${active.path.slice(11)}` : "새 글";
-      for (const element of [publishButton, loadButton, postSelect, title, body, images]) element.disabled = busy;
+      for (const element of [publishButton, imageButton, postSelect, title, body, images]) element.disabled = busy;
       deleteButton.disabled = busy || !active;
     }
     function setBusy(value) { busy = value; controls(); }
@@ -193,22 +193,19 @@
       } catch { /* Existing post drafts are still saved independently. */ }
       active = null; submission = null; deletion = null;
       title.value = ""; body.value = ""; postSelect.value = "";
-      baseline = fingerprint(); imageStatus.textContent = "붙여넣기 · 끌어놓기";
+      baseline = fingerprint(); imageStatus.textContent = "";
       render(); controls(); save(true); status.textContent = "새 글을 작성하세요.";
     }
-    postSelect.addEventListener("change", () => { if (!postSelect.value) startNew(); });
-    loadButton.addEventListener("click", async () => {
+    postSelect.addEventListener("change", async () => {
       if (busy) return;
       const path = postSelect.value;
       if (!path) { startNew(); return; }
-      if (fingerprint() !== baseline && !await ask("작성 중인 내용은 임시저장됩니다. 선택한 글을 불러오시겠습니까?", "불러오기")) { postSelect.value = active?.path || ""; return; }
       save(true); setBusy(true);
       try {
-        {
           const post = await getPost(path);
           let draft;
           try { draft = JSON.parse(localStorage.getItem(`${key}:${path}`)); } catch { /* Load repository version. */ }
-          if (draft?.active?.path === path && typeof draft.baseline === "string" && JSON.stringify([draft.title, draft.body]) !== draft.baseline && await ask("이 글의 저장된 수정 초안을 불러오시겠습니까? 취소하면 서버의 최신 글을 불러옵니다.", "초안 복원")) {
+          if (draft?.active?.path === path && typeof draft.baseline === "string" && JSON.stringify([draft.title, draft.body]) !== draft.baseline) {
             active = null; submission = null; deletion = null; restore(draft); render(); save(true);
             status.textContent = "수정 초안을 복원했습니다. 서버의 글이 변경됐다면 게시 시 충돌을 안내합니다.";
           } else {
@@ -216,7 +213,6 @@
             if (draft?.active?.path === path) try { localStorage.setItem(`${key}:previous:${path}`, JSON.stringify(draft)); } catch { /* Best effort only. */ }
             adopt(post); status.textContent = "게시물을 불러왔습니다.";
           }
-        }
       } catch (error) { status.textContent = error.message; postSelect.value = active?.path || ""; }
       finally { setBusy(false); }
     });
@@ -244,9 +240,7 @@
       finally { setBusy(false); images.value = ""; }
     }
     images.addEventListener("change", () => uploadImages(Array.from(images.files)));
-    root.querySelector(".editor-image-add").addEventListener("keydown", event => {
-      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); images.click(); }
-    });
+    imageButton.addEventListener("click", () => { if (!busy) images.click(); });
     body.addEventListener("paste", event => {
       const files = Array.from(event.clipboardData?.files || []);
       if (files.length) { event.preventDefault(); void uploadImages(files); }

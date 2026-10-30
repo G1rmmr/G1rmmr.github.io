@@ -12,17 +12,15 @@
 #blog-editor button[hidden] { display: none; }
 .editor-post-tools { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.2rem; }
 #post-select { flex: 1; min-width: 12rem; max-width: 100%; padding: .4rem; background: var(--md-code-bg-color); color: var(--md-default-fg-color); border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; }
-#post-load { cursor: pointer; padding: .35rem .6rem; border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; }
 #post-mode { width: 100%; color: var(--md-default-fg-color--light); font-size: .65rem; }
 #post-delete { color: #ff819a; }
 #post-confirm { max-width: min(32rem, calc(100% - 2rem)); padding: 1.2rem; border: 1px solid var(--md-default-fg-color--light); border-radius: .3rem; background: var(--md-default-bg-color); color: var(--md-default-fg-color); }
 #post-confirm::backdrop { background: #0009; }
 #post-confirm-message { white-space: pre-wrap; overflow-wrap: anywhere; }
 #blog-editor input[hidden] { display: none; }
-.editor-image-tools { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; font-size: .7rem; }
-.editor-image-add { cursor: pointer; border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; padding: .3rem .6rem; }
-.editor-image-add:focus-visible { outline: 2px solid var(--md-accent-fg-color); }
-#image-status { color: var(--md-default-fg-color--light); }
+.editor-toolbar .editor-image-add { padding: .35rem .45rem; font-size: .85rem; line-height: 1.2; }
+#image-status { color: var(--md-default-fg-color--light); font-size: .7rem; }
+#image-status:empty { display: none; }
 #post-preview img { display: block; max-width: 100%; height: auto; border-radius: .2rem; }
 #blog-editor input, #blog-editor textarea { display: block; width: 100%; padding: .65rem; margin: .4rem 0 1rem; border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; background: var(--md-code-bg-color); color: var(--md-default-fg-color); font: inherit; }
 #blog-editor textarea { min-height: 24rem; resize: vertical; font-family: var(--md-code-font-family); font-size: .75rem; }

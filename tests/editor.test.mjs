@@ -113,11 +113,11 @@ test("invalid and oversized images are rejected before uploading", async () => {
   assert.equal(e.calls.filter(([url]) => url === "/api/images").length, 0);
 });
 
-test("loads an existing post and updates the same path and loaded SHA", async () => {
+test("selecting an existing post loads immediately and updates the same path and loaded SHA", async () => {
   const path = "docs/posts/example.md";
   const e = await editor({ posts: { [path]: { title: "원본", body: "원본 본문\n", sha: "b".repeat(40) } } });
   e.fields["post-select"].value = path;
-  await e.fields["post-load"].click();
+  await e.fields["post-select"].events.change();
   assert.equal(e.fields["post-title"].value, "원본");
   assert.equal(e.fields["post-delete"].hidden, false);
   e.fields["post-title"].value = "수정";
@@ -133,7 +133,7 @@ test("cancelled deletion sends no request; confirmed deletion follows deployment
   const path = "docs/posts/example.md";
   for (const confirmed of [false, true]) {
     const e = await editor({ confirm: confirmed, posts: { [path]: { title: "삭제 대상", body: "본문", sha: "b".repeat(40) } } });
-    e.fields["post-select"].value = path; await e.fields["post-load"].click();
+    e.fields["post-select"].value = path; await e.fields["post-select"].events.change();
     await e.fields["post-delete"].click();
     const deletes = e.calls.filter(([url, options]) => url === "/api/post" && options.method === "DELETE");
     assert.equal(deletes.length, confirmed ? 1 : 0);
@@ -148,7 +148,7 @@ test("cancelled deletion sends no request; confirmed deletion follows deployment
 test("new-post selection clears immediately while preserving previous drafts", async () => {
   const path = "docs/posts/example.md";
   const e = await editor({ saved: { title: "작성 중인 새 글", body: "새 글 본문" }, posts: { [path]: { title: "기존 글", body: "기존 본문", sha: "b".repeat(40) } } });
-  e.fields["post-select"].value = path; await e.fields["post-load"].click();
+  e.fields["post-select"].value = path; await e.fields["post-select"].events.change();
   assert.equal(e.fields["post-title"].value, "기존 글");
   e.fields["post-select"].value = ""; e.fields["post-select"].events.change();
   assert.equal(e.fields["post-title"].value, "");
@@ -158,6 +158,25 @@ test("new-post selection clears immediately while preserving previous drafts", a
   assert.equal(e.fields["post-publish"].textContent, "게시");
   assert.equal(JSON.parse(e.storage.get("realm-post-draft-v2:previous:new")).title, "작성 중인 새 글");
   assert.equal(JSON.parse(e.storage.get(`realm-post-draft-v2:${path}`)).title, "기존 글");
-  await e.fields["post-load"].click();
+  await e.fields["post-select"].events.change();
   assert.equal(e.fields["post-title"].value, "");
+});
+
+test("switching posts saves and restores edits without a confirmation step", async () => {
+  const first = "docs/posts/first.md", second = "docs/posts/second.md";
+  const e = await editor({ confirm: false, posts: {
+    [first]: { title: "첫 글", body: "첫 본문", sha: "b".repeat(40) },
+    [second]: { title: "둘째 글", body: "둘째 본문", sha: "c".repeat(40) },
+  } });
+  e.fields["post-select"].value = first; await e.fields["post-select"].events.change();
+  e.fields["post-body"].value = "저장 전 수정";
+  e.fields["post-select"].value = second; await e.fields["post-select"].events.change();
+  assert.equal(e.fields["post-title"].value, "둘째 글");
+  assert.equal(e.fields["post-body"].value, "둘째 본문");
+  e.fields["post-select"].value = first; await e.fields["post-select"].events.change();
+  assert.equal(e.fields["post-body"].value, "저장 전 수정");
+  e.fields["post-select"].value = "docs/posts/missing.md"; await e.fields["post-select"].events.change();
+  assert.equal(e.fields["post-select"].value, first);
+  assert.equal(e.fields["post-body"].value, "저장 전 수정");
+  assert.equal(e.fields["post-publish"].disabled, false);
 });
