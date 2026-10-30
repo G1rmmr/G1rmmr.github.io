@@ -2,7 +2,6 @@
   <div class="editor-post-tools">
     <label for="post-select">POST</label>
     <select id="post-select"><option value="">새 글 작성</option></select>
-    <span id="post-mode" role="status">새 글</span>
   </div>
   <label for="post-title">TITLE</label>
   <input id="post-title" type="text" maxlength="200" autocomplete="off">

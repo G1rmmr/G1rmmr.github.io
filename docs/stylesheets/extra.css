@@ -12,7 +12,6 @@
 #blog-editor button[hidden] { display: none; }
 .editor-post-tools { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.2rem; }
 #post-select { flex: 1; min-width: 12rem; max-width: 100%; padding: .4rem; background: var(--md-code-bg-color); color: var(--md-default-fg-color); border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; }
-#post-mode { width: 100%; color: var(--md-default-fg-color--light); font-size: .65rem; }
 #post-delete { color: #ff819a; }
 #post-confirm { max-width: min(32rem, calc(100% - 2rem)); padding: 1.2rem; border: 1px solid var(--md-default-fg-color--light); border-radius: .3rem; background: var(--md-default-bg-color); color: var(--md-default-fg-color); }
 #post-confirm::backdrop { background: #0009; }

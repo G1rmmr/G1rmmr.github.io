@@ -52,7 +52,6 @@
     const postSelect = root.querySelector("#post-select");
     const imageButton = root.querySelector(".editor-image-add");
     const deleteButton = root.querySelector("#post-delete");
-    const mode = root.querySelector("#post-mode");
     const images = root.querySelector("#post-images");
     const imageStatus = root.querySelector("#image-status");
     const confirmation = root.querySelector("#post-confirm");
@@ -78,7 +77,6 @@
     function controls() {
       publishButton.textContent = active ? "수정 게시" : "게시";
       deleteButton.hidden = !active;
-      mode.textContent = active ? `수정 중 · ${active.path.slice(11)}` : "새 글";
       for (const element of [publishButton, imageButton, postSelect, title, body, images]) element.disabled = busy;
       deleteButton.disabled = busy || !active;
     }
