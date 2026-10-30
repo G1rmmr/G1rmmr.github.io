@@ -1,5 +1,6 @@
 name: Blog
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -24,6 +25,9 @@ jobs:
       - run: zensical build --clean
       - uses: actions/upload-pages-artifact@v4
         with:
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: site
       - uses: actions/deploy-pages@v4
         id: deployment
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
