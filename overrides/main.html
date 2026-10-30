@@ -13,6 +13,10 @@
     {{ super() }}
   {% endif %}
   {% if page and page.url and 'posts/' in page.url and page.url != 'posts/' %}
-    <p class="blog-views" role="status" aria-live="polite" data-post-views>조회수는 게시된 블로그에서 확인할 수 있습니다.</p>
+    <div class="blog-engagement">
+      <span role="status" aria-live="polite" data-post-views>조회수 확인 중…</span>
+      <button type="button" data-post-like aria-pressed="false" disabled>♡ 라이크 <span data-like-count>—</span></button>
+      <span class="like-status" data-like-status role="status" aria-live="polite"></span>
+    </div>
   {% endif %}
 {% endblock %}

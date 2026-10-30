@@ -6,16 +6,17 @@ import { webcrypto } from "node:crypto";
 
 const source = readFileSync(new URL("../docs/javascripts/editor.js", import.meta.url), "utf8");
 class Element {
-  constructor(tag = "div") { this.localName = tag; this.children = []; this.dataset = {}; this.value = ""; this.textContent = ""; this.events = {}; this.isConnected = true; }
+  constructor(tag = "div") { this.localName = tag; this.children = []; this.dataset = {}; this.value = ""; this.textContent = ""; this.events = {}; this.isConnected = true; this.selectionStart = 0; this.selectionEnd = 0; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(event, fn) { this.events[event] = fn; }
   click() { return this.events.click?.(); }
+  setRangeText(text, start, end) { this.value = this.value.slice(0, start) + text + this.value.slice(end); this.selectionStart = this.selectionEnd = start + text.length; }
 }
 async function editor({ saved = null, blocked = false, origin = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev", replies = [] } = {}) {
   const root = new Element();
-  const fields = Object.fromEntries(["post-title", "post-body", "post-preview", "editor-status", "post-save", "post-publish"].map(id => [id, new Element()]));
-  root.querySelector = selector => fields[selector.slice(1)];
+  const fields = Object.fromEntries(["post-title", "post-body", "post-preview", "editor-status", "post-save", "post-publish", "post-images", "image-status", "image-add"].map(id => [id, new Element()]));
+  root.querySelector = selector => selector === ".editor-image-add" ? fields["image-add"] : fields[selector.slice(1)];
   const storage = new Map(saved ? [["realm-post-draft-v2", JSON.stringify(saved)]] : []);
   const calls = []; const redirects = [];
   const document = { readyState: "complete", getElementById: () => root, createElement: tag => new Element(tag), createTextNode: text => ({ textContent: text }) };
@@ -24,6 +25,7 @@ async function editor({ saved = null, blocked = false, origin = "https://g1rmmr-
     if (url === "/api/session") return { ok: true, json: async () => ({ csrf: "csrf" }) };
     if (replies.length) { const reply = replies.shift(); if (reply instanceof Error) throw reply; return reply; }
     if (url.startsWith("/api/deployment")) return { ok: true, json: async () => ({ status: "success" }) };
+    if (url === "/api/images") return { ok: true, json: async () => ({ path: `/img/uploads/${"a".repeat(64)}.png` }) };
     return { ok: true, json: async () => ({ sha: "a".repeat(40), url: "https://g1rmmr.github.io/posts/test/", commit_url: "https://github.com/test" }) };
   } };
   const localStorage = { getItem: key => { if (blocked) throw Error(); return storage.get(key) ?? null; }, setItem: (key, value) => { if (blocked) throw Error(); storage.set(key, value); } };
@@ -75,4 +77,25 @@ test("empty content does not publish and expired sessions keep the draft", async
   await e.fields["post-publish"].click();
   assert.match(e.fields["editor-status"].textContent, /로그인이 만료/);
   assert.equal(JSON.parse(e.storage.get("realm-post-draft-v2")).body, "본문");
+});
+
+test("selected images upload with CSRF and become Markdown plus a safe preview", async () => {
+  const e = await editor();
+  e.fields["post-images"].files = [{ name: "사진.png", type: "image/png", size: 8 }];
+  await e.fields["post-images"].events.change();
+  const [, options] = e.calls.find(([url]) => url === "/api/images");
+  assert.equal(options.headers["X-CSRF-Token"], "csrf");
+  assert.equal(options.headers["Content-Type"], "image/png");
+  assert.match(e.fields["post-body"].value, /!\[사진\]\(\/img\/uploads\/a{64}\.png\)/);
+  const image = descendants(e.fields["post-preview"]).find(n => n.localName === "img");
+  assert.equal(image.src, `https://g1rmmr-blog-publisher.blckhnd-std.workers.dev/media/${"a".repeat(64)}.png`);
+});
+
+test("invalid and oversized images are rejected before uploading", async () => {
+  const e = await editor();
+  for (const file of [{ name: "x.svg", type: "image/svg+xml", size: 10 }, { name: "x.png", type: "image/png", size: 6 * 1024 * 1024 }]) {
+    e.fields["post-images"].files = [file];
+    await e.fields["post-images"].events.change();
+  }
+  assert.equal(e.calls.filter(([url]) => url === "/api/images").length, 0);
 });

@@ -1,10 +1,12 @@
 use crate::protocol::{
-    parse_view, valid_post_path, valid_content_type, valid_origin, valid_preflight, MAX_BODY_BYTES,
+    parse_view, parse_like, valid_visit_id, valid_post_path, valid_content_type, valid_origin, valid_preflight, MAX_BODY_BYTES,
 };
 use futures_util::StreamExt;
 use worker::{event, Context, Env, Method, Request, Response, Result};
 
 const INSERT_VIEW: &str = include_str!("../sql/record_view.sql");
+const SET_LIKE: &str = include_str!("../sql/set_like.sql");
+const UNSET_LIKE: &str = include_str!("../sql/unset_like.sql");
 
 #[event(fetch)]
 async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
@@ -12,7 +14,8 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         Ok(url) => url,
         Err(_) => return respond(400, None, false),
     };
-    if url.path() != "/views" || (url.query().is_some() && req.method() != Method::Get) {
+    let likes = url.path() == "/likes";
+    if (!likes && url.path() != "/views") || (url.query().is_some() && req.method() != Method::Get) {
         return respond(404, None, false);
     }
 
@@ -27,6 +30,14 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
     if req.method() == Method::Get {
         let params: Vec<_> = url.query_pairs().collect();
+        if likes {
+            let path = params.iter().find(|(key, _)| key == "path").map(|(_, value)| value.as_ref());
+            let id = params.iter().find(|(key, _)| key == "like_id").map(|(_, value)| value.as_ref());
+            if params.len() != 2 || !path.is_some_and(valid_post_path) || !id.is_some_and(valid_visit_id) {
+                return respond(400, Some(&allowed_origin), false);
+            }
+            return like_count(&env, path.unwrap(), &id.unwrap().to_ascii_lowercase(), &allowed_origin).await;
+        }
         if params.len() != 1 || params[0].0 != "path" || !valid_post_path(&params[0].1) {
             return respond(400, Some(&allowed_origin), false);
         }
@@ -73,6 +84,18 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
         body.extend_from_slice(&chunk);
     }
+    if likes {
+        let like = match parse_like(&body) {
+            Some(like) => like,
+            None => return respond(400, Some(&allowed_origin), false),
+        };
+        let outcome = async {
+            env.d1("DB")?.prepare(if like.liked { SET_LIKE } else { UNSET_LIKE })
+                .bind(&[like.path.clone().into(), like.like_id.clone().into()])?.run().await
+        }.await;
+        if outcome.is_err() { return respond(503, Some(&allowed_origin), false); }
+        return like_count(&env, &like.path, &like.like_id, &allowed_origin).await;
+    }
     let view = match parse_view(&body) {
         Some(view) => view,
         None => return respond(400, Some(&allowed_origin), false),
@@ -96,6 +119,25 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         return respond(503, Some(&allowed_origin), false);
     }
     view_count(&env, &path, &allowed_origin).await
+}
+
+async fn like_count(env: &Env, path: &str, id: &str, origin: &str) -> Result<Response> {
+    #[derive(serde::Deserialize)]
+    struct Stats { likes: u64, liked: u64 }
+    let outcome = async {
+        env.d1("DB")?.prepare("SELECT count(*) AS likes, coalesce(max(like_id = ?2), 0) AS liked FROM post_likes WHERE path = ?1")
+            .bind(&[path.into(), id.into()])?.first::<Stats>(None).await
+    }.await;
+    match outcome {
+        Ok(Some(stats)) => {
+            let mut response = Response::from_json(&serde_json::json!({"path": path, "likes": stats.likes, "liked": stats.liked != 0}))?;
+            response.headers_mut().set("Cache-Control", "no-store")?;
+            response.headers_mut().set("Vary", "Origin")?;
+            response.headers_mut().set("Access-Control-Allow-Origin", origin)?;
+            Ok(response)
+        }
+        _ => respond(503, Some(origin), false),
+    }
 }
 
 async fn view_count(env: &Env, path: &str, origin: &str) -> Result<Response> {

@@ -10,6 +10,22 @@ pub struct ViewRequest {
     pub visit_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LikeRequest {
+    pub path: String,
+    pub like_id: String,
+    pub liked: bool,
+}
+
+pub fn parse_like(bytes: &[u8]) -> Option<LikeRequest> {
+    if bytes.len() > MAX_BODY_BYTES { return None; }
+    let mut like: LikeRequest = serde_json::from_slice(bytes).ok()?;
+    if !valid_post_path(&like.path) || !valid_visit_id(&like.like_id) { return None; }
+    like.like_id.make_ascii_lowercase();
+    Some(like)
+}
+
 pub fn valid_post_path(path: &str) -> bool {
     if path.len() > MAX_PATH_BYTES {
         return false;
@@ -73,6 +89,20 @@ mod tests {
     use super::*;
 
     const ID: &str = "4b71a562-9091-469d-a89d-8fb160bb9b1d";
+
+    #[test]
+    fn validates_like_state_and_rejects_unknown_or_invalid_input() {
+        for liked in [true, false] {
+            let body = format!(r#"{{"path":"/posts/a/","like_id":"{}","liked":{liked}}}"#, ID.to_uppercase());
+            let like = parse_like(body.as_bytes()).unwrap();
+            assert_eq!(like.like_id, ID);
+            assert_eq!(like.liked, liked);
+        }
+        for body in [format!(r#"{{"path":"/posts/a/","like_id":"{ID}","liked":1}}"#), format!(r#"{{"path":"/","like_id":"{ID}","liked":true}}"#), format!(r#"{{"path":"/posts/a/","like_id":"{ID}","liked":true,"extra":1}}"#)] {
+            assert!(parse_like(body.as_bytes()).is_none());
+        }
+        assert!(parse_like(&vec![b' '; MAX_BODY_BYTES + 1]).is_none());
+    }
 
     #[test]
     fn accepts_current_posts_and_future_ascii_slugs() {

@@ -5,8 +5,13 @@ const OAUTH = "__Host-blog_oauth";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA = /^[0-9a-f]{40}$/;
 const enc = new TextEncoder();
+const IMAGE_LIMIT = 5 * 1024 * 1024;
 const now = () => Math.floor(Date.now() / 1000);
-const b64 = bytes => btoa(Array.from(bytes, b => String.fromCharCode(b)).join(""));
+const b64 = bytes => {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+  return btoa(binary);
+};
 const unb64 = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
 const url64 = bytes => b64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const random = () => url64(crypto.getRandomValues(new Uint8Array(32)));
@@ -57,10 +62,10 @@ async function decryptToken(value, env) {
   return new TextDecoder().decode(bytes);
 }
 
-async function github(token, path, options = {}) {
+async function github(token, path, options = {}, accept = "application/vnd.github+json") {
   return fetch(`https://api.github.com${path}`, {
     ...options, redirect: "manual", signal: AbortSignal.timeout(15000),
-    headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "User-Agent": "realm-blog-publisher", "X-GitHub-Api-Version": "2022-11-28", ...(options.body ? { "Content-Type": "application/json" } : {}) },
+    headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "realm-blog-publisher", "X-GitHub-Api-Version": "2022-11-28", ...(options.body ? { "Content-Type": "application/json" } : {}) },
   });
 }
 
@@ -125,9 +130,67 @@ async function session(req, env) {
   return { ...row, token: await decryptToken(row.token_ciphertext, env) };
 }
 
-function checkMutation(req, env, user) {
+function checkMutation(req, env, user, contentType = "application/json") {
   if (req.headers.get("Origin") !== env.PUBLISHER_ORIGIN || req.headers.get("X-CSRF-Token") !== user.csrf_token) throw new Problem(403, "게시 요청을 확인할 수 없습니다. 페이지를 새로고침하세요.");
-  if (req.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") throw new Problem(415, "JSON 형식으로 요청하세요.");
+  if (req.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== contentType) throw new Problem(415, "요청 파일 형식이 올바르지 않습니다.");
+}
+
+export function imageFormat(bytes) {
+  const starts = signature => signature.every((value, index) => bytes[index] === value);
+  if (starts([137, 80, 78, 71, 13, 10, 26, 10])) return { extension: "png", type: "image/png" };
+  if (starts([255, 216, 255])) return { extension: "jpg", type: "image/jpeg" };
+  const ascii = new TextDecoder("ascii").decode(bytes.slice(0, 12));
+  if (/^GIF8[79]a/.test(ascii)) return { extension: "gif", type: "image/gif" };
+  if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WEBP") return { extension: "webp", type: "image/webp" };
+  return null;
+}
+
+async function readBytes(req, limit) {
+  if (Number(req.headers.get("Content-Length")) > limit) throw new Problem(413, "이미지는 5 MiB 이하여야 합니다.");
+  const reader = req.body?.getReader();
+  if (!reader) throw new Problem(400, "파일이 필요합니다.");
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) { await reader.cancel(); throw new Problem(413, "이미지는 5 MiB 이하여야 합니다."); }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  return bytes;
+}
+
+async function uploadImage(req, env, user) {
+  const type = req.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase();
+  if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(type)) throw new Problem(415, "PNG, JPEG, WebP, GIF 이미지를 선택하세요.");
+  checkMutation(req, env, user, type);
+  const bytes = await readBytes(req, IMAGE_LIMIT);
+  const format = imageFormat(bytes);
+  if (!format || format.type !== type) throw new Problem(415, "이미지의 실제 형식과 파일 형식이 일치하지 않습니다.");
+  const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), b => b.toString(16).padStart(2, "0")).join("");
+  const name = `${digest}.${format.extension}`;
+  const path = `docs/img/uploads/${name}`;
+  const endpoint = `/repos/${REPO}/contents/${path}`;
+  const existing = await github(user.token, `${endpoint}?ref=main`);
+  if (existing.status !== 404) await githubData(existing);
+  else {
+    const created = await github(user.token, endpoint, { method: "PUT", body: JSON.stringify({ branch: "main", message: `[image] ${name}`, content: b64(bytes) }) });
+    if ([409, 422].includes(created.status)) await githubData(await github(user.token, `${endpoint}?ref=main`));
+    else await githubData(created);
+  }
+  return json({ path: `/img/uploads/${name}`, preview: `/media/${name}` });
+}
+
+async function imagePreview(url, user) {
+  const match = url.pathname.match(/^\/media\/([0-9a-f]{64}\.(png|jpg|webp|gif))$/);
+  if (!match) throw new Problem(404, "이미지를 찾을 수 없습니다.");
+  const image = await github(user.token, `/repos/${REPO}/contents/docs/img/uploads/${match[1]}?ref=main`, {}, "application/vnd.github.raw+json");
+  if (!image.ok) throw new Problem(image.status === 404 ? 404 : 502, "이미지를 불러오지 못했습니다.");
+  return new Response(image.body, { headers: { "Content-Type": `image/${match[2] === "jpg" ? "jpeg" : match[2]}`, "Cache-Control": "private, max-age=300" } });
 }
 
 export function validPost(value) {
@@ -204,11 +267,11 @@ async function deployment(url, user) {
 async function route(req, env) {
   const url = new URL(req.url);
   if (url.origin !== env.PUBLISHER_ORIGIN) return json({ error: "올바른 WRITE 주소를 이용하세요." }, 400);
-  const assets = url.pathname.startsWith("/assets/") || ["/stylesheets/extra.css", "/javascripts/editor.js", "/javascripts/pageviews.js", "/img/favicon.png", "/search.json", "/sitemap.xml"].includes(url.pathname);
+  const assets = url.pathname.startsWith("/assets/") || ["/stylesheets/extra.css", "/javascripts/editor.js", "/javascripts/pageviews.js", "/javascripts/likes.js", "/img/favicon.png", "/search.json", "/sitemap.xml"].includes(url.pathname);
   if (assets && ["GET", "HEAD"].includes(req.method)) return env.ASSETS.fetch(req);
   if (url.pathname === "/" && req.method === "GET") return redirect(`${env.PUBLISHER_ORIGIN}/write/`);
   const editor = ["/write", "/write/", "/write/index.html"].includes(url.pathname);
-  if (!editor && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/auth/")) return redirect(`${BLOG}${url.pathname}${url.search}`);
+  if (!editor && !url.pathname.startsWith("/api/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/media/")) return redirect(`${BLOG}${url.pathname}${url.search}`);
   if (!configured(env)) return (editor || url.pathname === "/auth/login") ? setupPage() : json({ error: "GitHub App 설정이 필요합니다." }, 503);
   if (url.pathname === "/auth/login" && req.method === "GET") return login(req, env);
   if (url.pathname === "/auth/callback" && req.method === "GET") return callback(req, env, url);
@@ -230,6 +293,8 @@ async function route(req, env) {
     }).transform(copy);
   }
   if (url.pathname === "/api/session" && req.method === "GET") return json({ login: "G1rmmr", csrf: user.csrf_token, expires_at: user.expires_at });
+  if (url.pathname === "/api/images" && req.method === "POST") return uploadImage(req, env, user);
+  if (url.pathname.startsWith("/media/") && req.method === "GET") return imagePreview(url, user);
   if (url.pathname === "/api/posts" && req.method === "POST") return publish(req, env, user);
   if (url.pathname === "/api/deployment" && req.method === "GET") return deployment(url, user);
   if (url.pathname === "/auth/logout" && req.method === "POST") {

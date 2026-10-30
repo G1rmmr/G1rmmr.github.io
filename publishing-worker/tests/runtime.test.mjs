@@ -11,6 +11,8 @@ const ORIGIN = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev";
 test("workerd completes OAuth exchange, encryption, D1 session and authenticated editor", async () => {
   const requests = [];
   let redirectUpstream = false;
+  let imageStored = false;
+  const png = new Uint8Array([137,80,78,71,13,10,26,10]);
   const mf = new Miniflare(convertV4MiniflareOptions({ workers: [{
     name: "publisher-test",
     modules: true,
@@ -34,6 +36,11 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
       }
       assert.equal(url.hostname, "api.github.com");
       assert.equal(req.headers.get("Authorization"), "Bearer test-user-token");
+      if (/\/contents\/docs\/img\/uploads\/[a-f0-9]{64}\.png$/.test(url.pathname)) {
+        if (req.method === "PUT") { imageStored = true; return Response.json({ commit: { sha: "a".repeat(40) } }, { status: 201 }); }
+        if (req.headers.get("Accept") === "application/vnd.github.raw+json") return new Response(png);
+        return Response.json({ type: "file" }, { status: imageStored ? 200 : 404 });
+      }
       if (url.pathname === "/user") return Response.json({ id: 52289794 });
       if (url.pathname === "/repos/G1rmmr/G1rmmr.github.io") return Response.json({ permissions: { push: true } });
       return new Response("Unexpected upstream", { status: 500 });
@@ -54,7 +61,8 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
     const cookie = callback.headers.getSetCookie().find(v => v.startsWith("__Host-blog_session=")).split(";")[0];
     const session = await mf.dispatchFetch(ORIGIN + "/api/session", { headers: { Cookie: cookie } });
     assert.equal(session.status, 200);
-    assert.equal((await session.json()).login, "G1rmmr");
+    const userSession = await session.json();
+    assert.equal(userSession.login, "G1rmmr");
     const page = await mf.dispatchFetch(ORIGIN + "/write/", { redirect: "manual", headers: { Cookie: cookie } });
     assert.equal(page.status, 200);
     assert.equal(page.headers.get("Cache-Control"), "no-store");
@@ -63,6 +71,14 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
     assert.match(html, /href="https:\/\/g1rmmr.github.io\/"/);
     const row = await db.prepare("SELECT token_ciphertext FROM publisher_sessions").first();
     assert.ok(!row.token_ciphertext.includes("test-user-token"));
+    const uploaded = await mf.dispatchFetch(ORIGIN + "/api/images", { method: "POST", headers: { Cookie: cookie, Origin: ORIGIN, "X-CSRF-Token": userSession.csrf, "Content-Type": "image/png" }, body: png });
+    assert.equal(uploaded.status, 200);
+    const image = await uploaded.json();
+    assert.match(image.path, /^\/img\/uploads\/[a-f0-9]{64}\.png$/);
+    const preview = await mf.dispatchFetch(ORIGIN + image.preview, { headers: { Cookie: cookie } });
+    assert.equal(preview.status, 200);
+    assert.equal(preview.headers.get("Content-Type"), "image/png");
+    assert.deepEqual(new Uint8Array(await preview.arrayBuffer()), png);
     redirectUpstream = true;
     const retry = await mf.dispatchFetch(ORIGIN + "/auth/login", { redirect: "manual" });
     const retryState = new URL(retry.headers.get("Location")).searchParams.get("state");

@@ -2,6 +2,7 @@ site/
 .venv/
 .cache/
 .wrangler/
+__pycache__/
 .DS_Store
 analytics-worker/target/
 analytics-worker/build/

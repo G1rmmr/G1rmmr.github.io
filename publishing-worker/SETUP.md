@@ -8,6 +8,9 @@
 - 게시 요청은 `G1rmmr/G1rmmr.github.io`의 `main`, `docs/posts`로 고정합니다.
 - 파일명은 서버에서 날짜와 요청 UUID로 생성합니다. 같은 요청을 재시도해도 중복 커밋하거나 기존 파일을 덮어쓰지 않습니다.
 - main 커밋 후 기존 `Blog` GitHub Actions가 배포하며, 편집창에서 대기·진행·성공·실패를 구분해 표시합니다.
+- 이미지 선택·붙여넣기·끌어놓기는 인증된 `/api/images`를 통해 PNG·JPEG·WebP·GIF를 업로드합니다 (장당 최대 5 MiB).
+- 이미지는 해시 기반 파일명으로 `docs/img/uploads`에 즉시 커밋합니다. 같은 이미지는 재사용합니다. 이미지 전용 커밋은 배포하지 않으며 이후 글 커밋 때 Pages에 반영합니다.
+- 기존 Contents 쓰기 권한으로 이미지도 저장하므로 GitHub App이나 Cloudflare에 추가 권한·저장소 설정은 필요하지 않습니다.
 - 기존 GitHub Pages 원점의 임시저장은 Worker 원점과 별개입니다. 이전 초안은 삭제하지 않습니다.
 
 ## 사용자가 직접 해야 할 설정

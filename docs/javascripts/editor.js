@@ -8,19 +8,25 @@
 
   // Build preview nodes with textContent: draft HTML is never executed.
   function inline(parent, text) {
-    const pattern = /(`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|\[([^\]]+)\]\(([^\s)]+)\))/g;
+    const pattern = /(`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|(!?)\[([^\]]*)\]\(([^\s)]+)\))/g;
     let offset = 0;
     for (const match of text.matchAll(pattern)) {
       parent.append(document.createTextNode(text.slice(offset, match.index)));
-      const node = document.createElement(match[2] ? "code" : match[3] ? "strong" : match[4] ? "em" : "a");
-      node.textContent = match[2] || match[3] || match[4] || match[5];
-      if (match[6]) {
+      const image = match[5] === "!";
+      const node = document.createElement(match[2] ? "code" : match[3] ? "strong" : match[4] ? "em" : image ? "img" : "a");
+      if (image) { node.alt = match[6]; node.loading = "lazy"; }
+      else node.textContent = match[2] || match[3] || match[4] || match[6];
+      if (match[7]) {
         try {
-          const url = new URL(match[6], window.location.href);
+          const url = new URL(match[7], window.location.href);
           if (["https:", "http:"].includes(url.protocol)) {
-            node.href = url.href;
-            node.target = "_blank";
-            node.rel = "noopener noreferrer";
+            if (image) {
+              node.src = /^\/img\/uploads\/[0-9a-f]{64}\.(png|jpg|webp|gif)$/.test(url.pathname) && [publisher, "https://g1rmmr.github.io"].includes(url.origin) ? `${publisher}/media/${url.pathname.split("/").pop()}` : url.href;
+            } else {
+              node.href = url.href;
+              node.target = "_blank";
+              node.rel = "noopener noreferrer";
+            }
           }
         } catch { /* Leave invalid links as inert text. */ }
       }
@@ -43,6 +49,8 @@
     const preview = root.querySelector("#post-preview");
     const status = root.querySelector("#editor-status");
     const publishButton = root.querySelector("#post-publish");
+    const images = root.querySelector("#post-images");
+    const imageStatus = root.querySelector("#image-status");
     let submission = null;
     let busy = false;
     let session;
@@ -109,6 +117,42 @@
     }
     root.addEventListener("input", () => { render(); save(); });
     root.querySelector("#post-save").addEventListener("click", () => save());
+
+    async function uploadImages(files) {
+      if (busy || !files.length) return;
+      busy = true; publishButton.disabled = true; title.disabled = true; body.disabled = true; images.disabled = true;
+      let inserted = 0;
+      try {
+        for (const file of files) {
+          if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) throw new Error("PNG, JPEG, WebP, GIF 이미지를 선택하세요.");
+          if (file.size > 5 * 1024 * 1024) throw new Error("이미지는 한 장에 5 MiB 이하여야 합니다.");
+          imageStatus.textContent = `이미지 업로드 중… (${inserted + 1}/${files.length})`;
+          const response = await window.fetch("/api/images", { method: "POST", credentials: "same-origin", headers: { "Content-Type": file.type, "X-CSRF-Token": session.csrf }, body: file });
+          if (response.status === 401) throw new Error("로그인이 만료됐습니다. 초안을 저장하고 다시 로그인하세요.");
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "이미지를 업로드하지 못했습니다.");
+          if (!/^\/img\/uploads\/[0-9a-f]{64}\.(png|jpg|webp|gif)$/.test(result.path)) throw new Error("이미지 주소를 확인하지 못했습니다.");
+          const alt = (file.name || "image").replace(/\.[^.]+$/, "").replace(/[\[\]\\\r\n]/g, " ").trim() || "image";
+          body.setRangeText(`\n![${alt}](${result.path})\n`, body.selectionStart, body.selectionEnd, "end");
+          render(); save(true); inserted++;
+        }
+        imageStatus.textContent = `이미지 ${inserted}장 추가됨`;
+      } catch (error) { imageStatus.textContent = error.message || "이미지 업로드에 실패했습니다."; }
+      finally { busy = false; publishButton.disabled = false; title.disabled = false; body.disabled = false; images.disabled = false; images.value = ""; }
+    }
+    images.addEventListener("change", () => uploadImages(Array.from(images.files)));
+    root.querySelector(".editor-image-add").addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); images.click(); }
+    });
+    body.addEventListener("paste", event => {
+      const files = Array.from(event.clipboardData?.files || []);
+      if (files.length) { event.preventDefault(); void uploadImages(files); }
+    });
+    body.addEventListener("dragover", event => { if (event.dataTransfer?.types.includes("Files")) event.preventDefault(); });
+    body.addEventListener("drop", event => {
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (files.length) { event.preventDefault(); void uploadImages(files); }
+    });
 
     function showLink(message, href, label) {
       status.textContent = message + " ";

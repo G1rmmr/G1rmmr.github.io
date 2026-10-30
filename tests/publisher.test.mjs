@@ -156,3 +156,28 @@ test("expired OAuth state, tampered sessions and logout fail safely", async () =
   env.db.prepare("UPDATE publisher_sessions SET token_ciphertext = 'corrupt'").run();
   assert.equal((await call(env, "/api/session", { headers })).status, 503);
 });
+
+test("image uploads require authentication, CSRF and a supported binary signature", async () => {
+  const env = environment(); const headers = await authenticated(env);
+  const body = new Uint8Array([137,80,78,71,13,10,26,10]);
+  assert.equal((await call(env, "/api/images", { method: "POST", headers: { "Content-Type": "image/png" }, body })).status, 401);
+  assert.equal((await call(env, "/api/images", { method: "POST", headers: { ...headers, "Content-Type": "image/png", "X-CSRF-Token": "wrong" }, body })).status, 403);
+  assert.equal((await call(env, "/api/images", { method: "POST", headers: { ...headers, "Content-Type": "image/png" }, body: "<svg/>" })).status, 415);
+  assert.equal((await call(env, "/api/images", { method: "POST", headers: { ...headers, "Content-Type": "image/png" }, body: new Uint8Array(5 * 1024 * 1024 + 1) })).status, 413);
+});
+
+test("identical images reuse a content-addressed path without duplicate commits", async () => {
+  const env = environment(); const headers = { ...await authenticated(env), "Content-Type": "image/png" };
+  const body = new Uint8Array([137,80,78,71,13,10,26,10]);
+  let writes = 0; let stored = false;
+  await upstream(async (url, options) => {
+    assert.match(url, /\/contents\/docs\/img\/uploads\/[0-9a-f]{64}\.png/);
+    if (options.method === "PUT") { writes++; stored = true; assert.equal(JSON.parse(options.body).branch, "main"); return response({ commit: { sha: COMMIT } }, 201); }
+    return stored ? response({ type: "file" }) : response({}, 404);
+  }, async () => {
+    const one = await call(env, "/api/images", { method: "POST", headers, body });
+    const two = await call(env, "/api/images", { method: "POST", headers, body });
+    assert.equal(one.status, 200); assert.equal(two.status, 200);
+    assert.deepEqual(await one.json(), await two.json()); assert.equal(writes, 1);
+  });
+});

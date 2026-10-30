@@ -2,7 +2,15 @@
   <label for="post-title">TITLE</label>
   <input id="post-title" type="text" maxlength="200" autocomplete="off">
   <div class="editor-columns">
-    <div><label for="post-body">CONTENT</label><textarea id="post-body" rows="20" spellcheck="false"></textarea></div>
+    <div>
+      <label for="post-body">CONTENT</label>
+      <div class="editor-image-tools">
+        <label for="post-images" class="editor-image-add" role="button" tabindex="0">이미지 추가</label>
+        <input id="post-images" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
+        <span id="image-status" role="status" aria-live="polite">붙여넣기 · 끌어놓기</span>
+      </div>
+      <textarea id="post-body" rows="20" spellcheck="false"></textarea>
+    </div>
     <div><h2>PREVIEW</h2><div id="post-preview" class="md-typeset"></div></div>
   </div>
   <div class="editor-toolbar">
