@@ -183,17 +183,28 @@
       baseline = fingerprint(); submission = null; deletion = null;
       postSelect.value = post.path; render(); save(true); controls();
     }
+    function startNew() {
+      if (busy) return;
+      save(true);
+      try {
+        const previous = localStorage.getItem(key);
+        const draft = JSON.parse(previous);
+        if (draft && (draft.title || draft.body)) localStorage.setItem(`${key}:previous:new`, previous);
+      } catch { /* Existing post drafts are still saved independently. */ }
+      active = null; submission = null; deletion = null;
+      title.value = ""; body.value = ""; postSelect.value = "";
+      baseline = fingerprint(); imageStatus.textContent = "붙여넣기 · 끌어놓기";
+      render(); controls(); save(true); status.textContent = "새 글을 작성하세요.";
+    }
+    postSelect.addEventListener("change", () => { if (!postSelect.value) startNew(); });
     loadButton.addEventListener("click", async () => {
       if (busy) return;
       const path = postSelect.value;
+      if (!path) { startNew(); return; }
       if (fingerprint() !== baseline && !await ask("작성 중인 내용은 임시저장됩니다. 선택한 글을 불러오시겠습니까?", "불러오기")) { postSelect.value = active?.path || ""; return; }
       save(true); setBusy(true);
       try {
-        if (!path) {
-          active = null; submission = null; deletion = null; title.value = ""; body.value = ""; baseline = fingerprint();
-          try { restore(JSON.parse(localStorage.getItem(key))); } catch { /* Start empty when storage is unavailable. */ }
-          render(); save(true); status.textContent = "새 글 초안을 불러왔습니다.";
-        } else {
+        {
           const post = await getPost(path);
           let draft;
           try { draft = JSON.parse(localStorage.getItem(`${key}:${path}`)); } catch { /* Load repository version. */ }

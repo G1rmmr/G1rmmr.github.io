@@ -145,11 +145,19 @@ test("cancelled deletion sends no request; confirmed deletion follows deployment
   }
 });
 
-test("loading a post preserves the independent new-post draft", async () => {
+test("new-post selection clears immediately while preserving previous drafts", async () => {
   const path = "docs/posts/example.md";
   const e = await editor({ saved: { title: "작성 중인 새 글", body: "새 글 본문" }, posts: { [path]: { title: "기존 글", body: "기존 본문", sha: "b".repeat(40) } } });
   e.fields["post-select"].value = path; await e.fields["post-load"].click();
   assert.equal(e.fields["post-title"].value, "기존 글");
-  e.fields["post-select"].value = ""; await e.fields["post-load"].click();
-  assert.equal(e.fields["post-title"].value, "작성 중인 새 글");
+  e.fields["post-select"].value = ""; e.fields["post-select"].events.change();
+  assert.equal(e.fields["post-title"].value, "");
+  assert.equal(e.fields["post-body"].value, "");
+  assert.equal(e.fields["post-preview"].children.length, 0);
+  assert.equal(e.fields["post-delete"].hidden, true);
+  assert.equal(e.fields["post-publish"].textContent, "게시");
+  assert.equal(JSON.parse(e.storage.get("realm-post-draft-v2:previous:new")).title, "작성 중인 새 글");
+  assert.equal(JSON.parse(e.storage.get(`realm-post-draft-v2:${path}`)).title, "기존 글");
+  await e.fields["post-load"].click();
+  assert.equal(e.fields["post-title"].value, "");
 });
