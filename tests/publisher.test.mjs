@@ -23,7 +23,15 @@ async function authenticated(env, userId = ID) {
 }
 const call = (env, path, options = {}) => worker.fetch(new Request(ORIGIN + path, options), env);
 const response = (data, status = 200) => Response.json(data, { status });
-async function upstream(handler, fn) { const original = globalThis.fetch; globalThis.fetch = handler; try { await fn(); } finally { globalThis.fetch = original; } }
+async function upstream(handler, fn) {
+  const original = globalThis.fetch;
+  globalThis.fetch = (url, options) => {
+    // Workers accepts only manual/follow, unlike Node's broader Fetch API.
+    assert.equal(options.redirect, "manual");
+    return handler(url, options);
+  };
+  try { await fn(); } finally { globalThis.fetch = original; }
+}
 
 test("fails closed before configuration and protects every editor URL", async () => {
   const env = environment(); delete env.GITHUB_CLIENT_SECRET;

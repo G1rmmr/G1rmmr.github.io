@@ -59,7 +59,7 @@ async function decryptToken(value, env) {
 
 async function github(token, path, options = {}) {
   return fetch(`https://api.github.com${path}`, {
-    ...options, redirect: "error", signal: AbortSignal.timeout(15000),
+    ...options, redirect: "manual", signal: AbortSignal.timeout(15000),
     headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}`, "User-Agent": "realm-blog-publisher", "X-GitHub-Api-Version": "2022-11-28", ...(options.body ? { "Content-Type": "application/json" } : {}) },
   });
 }
@@ -96,7 +96,7 @@ async function callback(req, env, url) {
   const pending = await env.DB.prepare("DELETE FROM publisher_oauth WHERE state_hash = ?1 RETURNING verifier, expires_at").bind(await hash(state)).first();
   if (!pending || pending.expires_at <= now() || !code || code.length > 512) throw new Problem(400, "로그인 요청이 만료됐거나 취소됐습니다. WRITE에서 다시 시작하세요.");
   const exchange = await fetch("https://github.com/login/oauth/access_token", {
-    method: "POST", redirect: "error", signal: AbortSignal.timeout(15000),
+    method: "POST", redirect: "manual", signal: AbortSignal.timeout(15000),
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ client_id: env.GITHUB_CLIENT_ID, client_secret: env.GITHUB_CLIENT_SECRET, code, redirect_uri: `${env.PUBLISHER_ORIGIN}/auth/callback`, code_verifier: pending.verifier }),
   });
