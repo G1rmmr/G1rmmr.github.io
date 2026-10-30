@@ -14,7 +14,7 @@ extra_javascript = ["javascripts/pageviews.js", "javascripts/editor.js"]
 
 nav = [
   {"H O M E" = "index.md"},
-  {"W R I T E" = "write.md"},
+  {"W R I T E" = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev/write/"},
   {"P O S T" = [
     "posts/index.md",
     "posts/2025-12-8.md",

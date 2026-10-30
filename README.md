@@ -11,13 +11,11 @@ python scripts/build_blog.py
 
 ## 글 작성
 
-블로그의 **W R I T E** 메뉴에서 빈 TITLE과 CONTENT에 글을 작성합니다.
-PREVIEW에서 기본 Markdown 서식을 확인할 수 있습니다. 버튼은 **임시저장**, **게시** 두 개입니다.
-파일 이름은 날짜와 UUID로 자동 생성합니다. **게시**를 누르면 파일명과 본문이 채워진
-GitHub 작성 화면이 열립니다. 내용을 확인하고 커밋하면 기존 GitHub Pages workflow가 빌드·배포합니다.
-긴 글은 URL 길이 제한 때문에 파일로 내려받고 GitHub 업로드 화면으로 연결합니다.
-저장소 쓰기 권한이 필요하며, 임시저장은 브라우저와 기기에 종속됩니다.
-단순화 전 초안은 기존 저장 키에 그대로 남기고, 새 편집창은 빈 상태에서 시작합니다.
+**W R I T E**는 인증용 Cloudflare Worker에서 열립니다. G1rmmr GitHub 계정으로 로그인한 뒤
+TITLE·CONTENT를 작성하고 **게시**를 누르면 main에 자동 커밋하고 기존 GitHub Pages 배포를 추적합니다.
+파일명은 서버에서 자동 생성합니다. 버튼은 **임시저장**, **게시** 두 개이며 초안은 브라우저에 보관합니다.
+GitHub App의 최초 등록·설치는 계정 소유자가 완료해야 합니다.
+설정값과 절차는 [GitHub App 설정 안내](publishing-worker/SETUP.md)를 참고하세요.
 
 ## 조회수 API
 

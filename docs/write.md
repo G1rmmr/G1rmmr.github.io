@@ -1,4 +1,4 @@
-<div id="blog-editor">
+<div id="blog-editor" hidden>
   <label for="post-title">TITLE</label>
   <input id="post-title" type="text" maxlength="200" autocomplete="off">
   <div class="editor-columns">

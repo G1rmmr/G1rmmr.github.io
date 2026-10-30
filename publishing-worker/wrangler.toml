@@ -1,0 +1,23 @@
+name = "g1rmmr-blog-publisher"
+main = "src/worker.mjs"
+compatibility_date = "2026-10-30"
+workers_dev = true
+preview_urls = false
+
+[vars]
+PUBLISHER_ORIGIN = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev"
+GITHUB_OWNER_ID = "52289794"
+
+[assets]
+directory = "../site"
+binding = "ASSETS"
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "g1rmmr-blog-views"
+database_id = "094f39a7-3666-4137-ba7d-0677649e7433"
+migrations_dir = "../analytics-worker/migrations"
+
+[observability]
+enabled = false

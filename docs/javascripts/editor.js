@@ -2,6 +2,7 @@
   "use strict";
   if (window.__blogEditorInitialized) return;
   window.__blogEditorInitialized = true;
+  const publisher = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev";
   // Start the simplified editor empty; keep the old draft untouched in storage.
   const key = "realm-post-draft-v2";
 
@@ -29,20 +30,40 @@
     parent.append(document.createTextNode(text.slice(offset)));
   }
 
-  function initialize() {
+  async function initialize() {
     const root = document.getElementById("blog-editor");
     if (!root || root.dataset.initialized) return;
     root.dataset.initialized = "true";
+    if (window.location.origin !== publisher) {
+      window.location.replace(`${publisher}/write/`);
+      return;
+    }
     const title = root.querySelector("#post-title");
     const body = root.querySelector("#post-body");
     const preview = root.querySelector("#post-preview");
     const status = root.querySelector("#editor-status");
-    let slug = null;
+    const publishButton = root.querySelector("#post-publish");
+    let submission = null;
+    let busy = false;
+    let session;
+    try {
+      const response = await window.fetch("/api/session", { credentials: "same-origin", cache: "no-store" });
+      if (response.status === 401) { window.location.replace("/auth/login"); return; }
+      if (!response.ok) throw new Error();
+      session = await response.json();
+      if (!session.csrf) throw new Error();
+    } catch {
+      root.hidden = false;
+      publishButton.disabled = true;
+      status.textContent = "로그인 상태를 확인하지 못했습니다. 페이지를 새로고침하세요.";
+      return;
+    }
+    root.hidden = false;
     try {
       const draft = JSON.parse(localStorage.getItem(key));
       if (draft && [draft.title, draft.body].every(value => typeof value === "string")) {
         title.value = draft.title; body.value = draft.body;
-        if (typeof draft.slug === "string" && /^[A-Za-z0-9][A-Za-z0-9_-]{0,247}$/.test(draft.slug)) slug = draft.slug;
+        if (draft.submission && typeof draft.submission.id === "string" && typeof draft.submission.fingerprint === "string") submission = draft.submission;
         status.textContent = "임시저장한 글을 복원했습니다.";
       }
     } catch { status.textContent = "브라우저의 임시저장을 사용할 수 없습니다."; }
@@ -80,36 +101,76 @@
         inline(node, h ? h[2] : line); preview.append(node);
       }
     }
-    function save() {
+    function save(quiet = false) {
       try {
-        localStorage.setItem(key, JSON.stringify({ title: title.value, slug, body: body.value }));
-        status.textContent = "이 브라우저에 임시저장했습니다.";
+        localStorage.setItem(key, JSON.stringify({ title: title.value, submission, body: body.value }));
+        if (!quiet) status.textContent = "이 브라우저에 임시저장했습니다.";
       } catch { status.textContent = "임시저장에 실패했습니다. 브라우저 저장 공간을 확인하세요."; }
     }
     root.addEventListener("input", () => { render(); save(); });
-    root.querySelector("#post-save").addEventListener("click", save);
-    root.querySelector("#post-publish").addEventListener("click", () => {
+    root.querySelector("#post-save").addEventListener("click", () => save());
+
+    function showLink(message, href, label) {
+      status.textContent = message + " ";
+      const link = document.createElement("a");
+      link.href = href; link.textContent = label; link.target = "_blank"; link.rel = "noopener noreferrer";
+      status.append(link);
+    }
+
+    async function watchDeployment(published) {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        if (!root.isConnected) return;
+        try {
+          const response = await window.fetch(`/api/deployment?sha=${published.sha}`, { credentials: "same-origin", cache: "no-store" });
+          if (response.status === 401) {
+            showLink("커밋은 완료됐지만 로그인이 만료돼 배포 상태를 확인할 수 없습니다.", published.commit_url, "커밋 확인"); return;
+          }
+          if (!response.ok) throw new Error();
+          const deployment = await response.json();
+          if (deployment.status === "success") {
+            showLink("배포가 완료됐습니다.", published.url, "게시물 열기"); return;
+          }
+          if (deployment.status === "failure") {
+            showLink("커밋은 완료됐지만 블로그 배포가 실패했습니다.", deployment.workflow_url, "배포 로그 확인"); return;
+          }
+          showLink("main 커밋 완료 · 블로그 배포 중…", published.commit_url, "커밋 확인");
+        } catch {
+          showLink("커밋은 완료됐지만 배포 상태를 확인하지 못했습니다. 확인을 다시 시도합니다.", published.commit_url, "커밋 확인");
+        }
+        await new Promise(resolve => window.setTimeout(resolve, 5000));
+      }
+      showLink("커밋은 완료됐습니다. 배포 상태는 GitHub Actions에서 확인하세요.", "https://github.com/G1rmmr/G1rmmr.github.io/actions/workflows/docs.yml", "배포 확인");
+    }
+
+    publishButton.addEventListener("click", async () => {
+      if (busy) return;
       if (!title.value.trim() || /[\r\n]/.test(title.value) || !body.value.trim()) {
         status.textContent = "TITLE과 CONTENT를 입력하세요."; return;
       }
-      slug ??= `${new Date().toISOString().slice(0, 10)}-${window.crypto.randomUUID()}`;
-      save();
-      const content = `# ${title.value.trim()}\n\n${body.value}\n`;
-      const publishUrl = new URL("https://github.com/G1rmmr/G1rmmr.github.io/new/main");
-      publishUrl.searchParams.set("filename", `docs/posts/${slug}.md`);
-      publishUrl.searchParams.set("value", content);
-      if (publishUrl.href.length <= 6000) {
-        window.open(publishUrl.href, "_blank", "noopener,noreferrer");
-        status.textContent = "GitHub에서 내용을 확인하고 커밋하면 게시됩니다. 새 창이 열리지 않았다면 팝업 허용 후 다시 눌러주세요.";
-        return;
+      if (body.value.length > 200000) { status.textContent = "CONTENT는 200,000자 이하여야 합니다."; return; }
+      const fingerprint = JSON.stringify([title.value.trim(), body.value]);
+      if (!submission || submission.fingerprint !== fingerprint) submission = { id: window.crypto.randomUUID(), fingerprint };
+      save(true);
+      busy = true; publishButton.disabled = true; title.disabled = true; body.disabled = true;
+      status.textContent = "게시물을 main에 커밋하는 중…";
+      try {
+        const response = await window.fetch("/api/posts", {
+          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-CSRF-Token": session.csrf },
+          body: JSON.stringify({ request_id: submission.id, title: title.value.trim(), body: body.value }),
+        });
+        if (response.status === 401) {
+          showLink("로그인이 만료됐습니다. 초안을 저장한 뒤 다시 로그인하세요.", "/auth/login", "GitHub 로그인"); return;
+        }
+        const result = await response.json();
+        if (!response.ok) { status.textContent = result.error || "게시하지 못했습니다. 다시 시도하세요."; return; }
+        submission.published = result;
+        save(true);
+        await watchDeployment(result);
+      } catch {
+        status.textContent = "게시 결과를 확인하지 못했습니다. 같은 내용으로 다시 누르면 중복 글 없이 확인합니다.";
+      } finally {
+        busy = false; publishButton.disabled = false; title.disabled = false; body.disabled = false;
       }
-      // Long posts exceed practical URL limits; preserve the entire text in a file.
-      const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
-      const link = document.createElement("a"); link.href = url; link.download = `${slug}.md`;
-      document.body.append(link); link.click(); link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      window.open("https://github.com/G1rmmr/G1rmmr.github.io/upload/main/docs/posts", "_blank", "noopener,noreferrer");
-      status.textContent = "긴 글은 파일로 준비했습니다. 열린 GitHub 창에 내려받은 파일을 업로드하고 커밋하면 게시됩니다.";
     });
     render();
   }

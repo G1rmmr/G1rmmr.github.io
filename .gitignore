@@ -1,9 +1,12 @@
 site/
 .venv/
 .cache/
+.wrangler/
 .DS_Store
 analytics-worker/target/
 analytics-worker/build/
 analytics-worker/.wrangler/
 analytics-worker/node_modules/
 analytics-worker/.dev.vars
+publishing-worker/.dev.vars
+publishing-worker/.wrangler/

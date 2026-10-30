@@ -4,6 +4,7 @@
 }
 
 .blog-views { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--md-default-fg-color--lightest); color: var(--md-default-fg-color--light); font-size: .75rem; }
+#blog-editor[hidden] { display: none; }
 #blog-editor input, #blog-editor textarea { display: block; width: 100%; padding: .65rem; margin: .4rem 0 1rem; border: 1px solid var(--md-default-fg-color--light); border-radius: .2rem; background: var(--md-code-bg-color); color: var(--md-default-fg-color); font: inherit; }
 #blog-editor textarea { min-height: 24rem; resize: vertical; font-family: var(--md-code-font-family); font-size: .75rem; }
 .editor-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; align-items: center; }
