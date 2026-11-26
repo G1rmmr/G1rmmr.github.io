@@ -72,14 +72,14 @@ Cloudflare Dashboard → **Workers & Pages → g1rmmr-blog-publisher → Setting
 
 ## 개발·배포
 
-Node.js 22 이상과 `analytics-worker`의 기존 npm 의존성을 사용합니다.
+Node.js 22 이상과 `publishing-worker`의 기존 npm 의존성을 사용합니다.
 
 ```powershell
 node --test tests/*.test.mjs
 node --test publishing-worker/tests/*.test.mjs
 .venv/Scripts/python.exe scripts/build_blog.py
-node analytics-worker/node_modules/wrangler/bin/wrangler.js d1 migrations apply DB --remote --config publishing-worker/wrangler.toml
-node analytics-worker/node_modules/wrangler/bin/wrangler.js deploy --config publishing-worker/wrangler.toml
+node publishing-worker/node_modules/wrangler/bin/wrangler.js d1 migrations apply DB --remote --config publishing-worker/wrangler.toml
+node publishing-worker/node_modules/wrangler/bin/wrangler.js deploy --config publishing-worker/wrangler.toml
 node scripts/set-publisher-encryption-key.mjs
 ```
 

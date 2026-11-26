@@ -11,9 +11,8 @@ const COMMIT = "a".repeat(40);
 const TOKEN = "test-user-token";
 function environment() {
   const db = new DatabaseSync(":memory:");
-  db.exec(readFileSync(new URL("../analytics-worker/migrations/0001_views.sql", import.meta.url), "utf8"));
-  db.exec(readFileSync(new URL("../analytics-worker/migrations/0002_publishing.sql", import.meta.url), "utf8"));
-  db.exec(readFileSync(new URL("../analytics-worker/migrations/0004_post_management.sql", import.meta.url), "utf8"));
+  db.exec(readFileSync(new URL("../publishing-worker/migrations/0002_publishing.sql", import.meta.url), "utf8"));
+  db.exec(readFileSync(new URL("../publishing-worker/migrations/0004_post_management.sql", import.meta.url), "utf8"));
   return { PUBLISHER_ORIGIN: ORIGIN, GITHUB_OWNER_ID: ID, GITHUB_CLIENT_ID: "Iv1.test", GITHUB_CLIENT_SECRET: "test-secret", TOKEN_ENCRYPTION_KEY: btoa("x".repeat(32)), ASSETS: { fetch: async () => new Response("PRIVATE EDITOR") }, db,
     DB: { prepare: sql => { const stmt = db.prepare(sql.replace(/\?\d+/g, "?")); let values = []; return { bind(...args) { values = args; return this; }, async run() { return stmt.run(...values); }, async first() { return stmt.get(...values) ?? null; }, async all() { return { results: stmt.all(...values) }; } }; }, batch: statements => Promise.all(statements.map(s => s.run())) } };
 }
@@ -43,7 +42,6 @@ test("fails closed before configuration and protects every editor URL", async ()
   }
   assert.equal((await call(env, "/api/session")).status, 401);
   assert.equal((await call(env, "/api/posts", { method: "POST" })).status, 401);
-  assert.equal(env.db.prepare("SELECT count(*) n FROM post_views").get().n, 0);
 });
 test("owner ID and expiry are checked even with a valid encrypted session", async () => {
   const env = environment(); const headers = await authenticated(env, "999");

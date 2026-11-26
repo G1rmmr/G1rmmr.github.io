@@ -376,7 +376,7 @@ async function deployment(url, user) {
 async function route(req, env) {
   const url = new URL(req.url);
   if (url.origin !== env.PUBLISHER_ORIGIN) return json({ error: "올바른 WRITE 주소를 이용하세요." }, 400);
-  const assets = url.pathname.startsWith("/assets/") || ["/stylesheets/extra.css", "/javascripts/editor.js", "/javascripts/pageviews.js", "/javascripts/likes.js", "/img/favicon.png", "/search.json", "/sitemap.xml"].includes(url.pathname);
+  const assets = url.pathname.startsWith("/assets/") || ["/stylesheets/extra.css", "/javascripts/editor.js", "/img/favicon.png", "/search.json", "/sitemap.xml"].includes(url.pathname);
   if (assets && ["GET", "HEAD"].includes(req.method)) return env.ASSETS.fetch(req);
   if (url.pathname === "/" && req.method === "GET") return redirect(`${env.PUBLISHER_ORIGIN}/write/`);
   const editor = ["/write", "/write/", "/write/index.html"].includes(url.pathname);

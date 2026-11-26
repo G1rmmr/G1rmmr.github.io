@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const require = createRequire(new URL("../../analytics-worker/package.json", import.meta.url));
+const require = createRequire(new URL("../package.json", import.meta.url));
 const { Miniflare, convertV4MiniflareOptions } = require("miniflare");
 const ORIGIN = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev";
 
@@ -64,9 +64,9 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
   }] }));
   try {
     const db = await mf.getD1Database("DB");
-    const schema = readFileSync(new URL("../../analytics-worker/migrations/0002_publishing.sql", import.meta.url), "utf8");
+    const schema = readFileSync(new URL("../migrations/0002_publishing.sql", import.meta.url), "utf8");
     for (const statement of schema.replace(/^--.*$/gm, "").split(";").filter(s => s.trim())) await db.prepare(statement).run();
-    const management = readFileSync(new URL("../../analytics-worker/migrations/0004_post_management.sql", import.meta.url), "utf8");
+    const management = readFileSync(new URL("../migrations/0004_post_management.sql", import.meta.url), "utf8");
     for (const statement of management.split(";").filter(s => s.trim())) await db.prepare(statement).run();
     const start = await mf.dispatchFetch(ORIGIN + "/auth/login", { redirect: "manual" });
     assert.equal(start.status, 302);

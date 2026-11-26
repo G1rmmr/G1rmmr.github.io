@@ -10,12 +10,12 @@ docs_dir = "docs"
 site_dir = "site"
 
 extra_css = ["stylesheets/extra.css"]
-extra_javascript = ["javascripts/pageviews.js", "javascripts/likes.js", "javascripts/editor.js"]
+extra_javascript = ["javascripts/editor.js"]
 
 nav = [
-  {"H O M E" = "index.md"},
-  {"W R I T E" = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev/write/"},
-  {"P O S T" = [
+  {"소개" = "index.md"},
+  {"글쓰기" = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev/write/"},
+  {"게시물" = [
     # BEGIN GENERATED POSTS
     "posts/index.md",
     # END GENERATED POSTS
@@ -24,9 +24,8 @@ nav = [
 
 [project.theme]
 variant = "modern"
-custom_dir = "overrides"
 favicon = "img/favicon.png"
-language = "en"
+language = "ko"
 logo = "img/favicon.png"
 
 features = [
@@ -47,6 +46,3 @@ primary = "custom"
 [project.extra]
 generator = false
 
-[project.extra.pageviews]
-# Set this to the deployed Rust Worker's /views URL to enable recording.
-endpoint = "https://g1rmmr-blog-views.blckhnd-std.workers.dev/views"

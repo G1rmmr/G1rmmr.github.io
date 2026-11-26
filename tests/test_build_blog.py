@@ -14,7 +14,7 @@ class NavigationTests(unittest.TestCase):
         source = (ROOT / "zensical.toml").read_text(encoding="utf-8")
         names = ["posts/new-post.md", "posts/old-post.md"]
         config = tomllib.loads(build_blog.navigation_config(source, names))
-        posts = next(group["P O S T"] for group in config["project"]["nav"] if "P O S T" in group)
+        posts = next(group["게시물"] for group in config["project"]["nav"] if "게시물" in group)
         self.assertEqual(posts, ["posts/index.md", *names])
 
     def test_removed_posts_do_not_remain_in_navigation(self):

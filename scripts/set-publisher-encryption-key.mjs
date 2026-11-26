@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
-const wrangler = fileURLToPath(new URL("../analytics-worker/node_modules/wrangler/bin/wrangler.js", import.meta.url));
+const wrangler = fileURLToPath(new URL("../publishing-worker/node_modules/wrangler/bin/wrangler.js", import.meta.url));
 const config = fileURLToPath(new URL("../publishing-worker/wrangler.toml", import.meta.url));
 const existing = spawnSync(process.execPath, [wrangler, "secret", "list", "--config", config], { cwd: root, encoding: "utf8" });
 if (existing.status !== 0) throw new Error("Cannot inspect existing secret names; refusing to replace a key.");
