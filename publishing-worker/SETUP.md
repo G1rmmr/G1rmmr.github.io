@@ -80,7 +80,11 @@ npm test
 npm run dev
 ```
 
-GitHub Pages는 main에 푸시하면 배포됩니다. Cloudflare Workers Builds에서 발행 Worker의 루트 디렉터리를 저장소 루트로 지정하고 빌드 명령은 `npm ci && npm run build`, 배포 명령은 `npm run deploy`로 설정합니다. Node.js 버전은 24로 맞춥니다. 수동 배포도 같은 명령을 사용합니다. D1 스키마를 처음 설치하거나 변경할 때는 `npm run migrate:remote`를 실행합니다.
+GitHub Actions가 배포를 담당합니다. PR에서는 타입 검사·빌드·테스트를 실행합니다. main에 푸시하거나 main에서 워크플로를 수동 실행하면 같은 빌드 결과를 `g1rmmr-blog-publisher`와 GitHub Pages에 배포합니다. 발행 Worker에 Cloudflare Workers Builds의 Git 연결이 남아 있으면 중복 배포를 방지하도록 해제합니다.
+
+저장소의 **Settings → Secrets and variables → Actions**에서 `CLOUDFLARE_API_TOKEN`을 repository secret으로, `CLOUDFLARE_ACCOUNT_ID`를 repository variable 또는 secret으로 등록합니다. 토큰은 발행 Worker를 배포할 계정의 Workers Scripts 편집 권한이 필요합니다. GitHub 로그인용 비밀값은 Worker에 그대로 보관합니다.
+
+발행 Worker는 기존 D1 데이터베이스 `g1rmmr-blog-views`를 사용합니다. D1 스키마를 처음 설치하거나 변경할 때는 `npm run migrate:remote`를 실행합니다.
 
 ## 참고 문서
 
