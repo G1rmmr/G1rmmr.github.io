@@ -1,3 +1,4 @@
+interface Window { __blogEditorInitialized?: boolean }
 (() => {
   "use strict";
   if (window.__blogEditorInitialized) return;
@@ -7,25 +8,25 @@
   const key = "realm-post-draft-v2";
 
   // Build preview nodes with textContent: draft HTML is never executed.
-  function inline(parent, text) {
+  function inline(parent: HTMLElement, text: string) {
     const pattern = /(`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|(!?)\[([^\]]*)\]\(([^\s)]+)\))/g;
     let offset = 0;
     for (const match of text.matchAll(pattern)) {
       parent.append(document.createTextNode(text.slice(offset, match.index)));
       const image = match[5] === "!";
       const node = document.createElement(match[2] ? "code" : match[3] ? "strong" : match[4] ? "em" : image ? "img" : "a");
-      if (image) { node.alt = match[6]; node.loading = "lazy"; }
+      if (image) { (node as HTMLImageElement).alt = match[6]; (node as HTMLImageElement).loading = "lazy"; }
       else node.textContent = match[2] || match[3] || match[4] || match[6];
       if (match[7]) {
         try {
           const url = new URL(match[7], window.location.href);
           if (["https:", "http:"].includes(url.protocol)) {
             if (image) {
-              node.src = /^\/img\/uploads\/[0-9a-f]{64}\.(png|jpg|webp|gif)$/.test(url.pathname) && [publisher, "https://g1rmmr.github.io"].includes(url.origin) ? `${publisher}/media/${url.pathname.split("/").pop()}` : url.href;
+              (node as HTMLImageElement).src = /^\/img\/uploads\/[0-9a-f]{64}\.(png|jpg|webp|gif)$/.test(url.pathname) && [publisher, "https://g1rmmr.github.io"].includes(url.origin) ? `${publisher}/media/${url.pathname.split("/").pop()}` : url.href;
             } else {
-              node.href = url.href;
-              node.target = "_blank";
-              node.rel = "noopener noreferrer";
+              (node as HTMLAnchorElement).href = url.href;
+              (node as HTMLAnchorElement).target = "_blank";
+              (node as HTMLAnchorElement).rel = "noopener noreferrer";
             }
           }
         } catch { /* Leave invalid links as inert text. */ }
@@ -44,25 +45,25 @@
       window.location.replace(`${publisher}/write/`);
       return;
     }
-    const title = root.querySelector("#post-title");
-    const body = root.querySelector("#post-body");
-    const preview = root.querySelector("#post-preview");
-    const status = root.querySelector("#editor-status");
-    const publishButton = root.querySelector("#post-publish");
-    const postSelect = root.querySelector("#post-select");
-    const imageButton = root.querySelector(".editor-image-add");
-    const deleteButton = root.querySelector("#post-delete");
-    const images = root.querySelector("#post-images");
-    const imageStatus = root.querySelector("#image-status");
-    const confirmation = root.querySelector("#post-confirm");
+    const title = root.querySelector<HTMLInputElement>("#post-title")!;
+    const body = root.querySelector<HTMLTextAreaElement>("#post-body")!;
+    const preview = root.querySelector<HTMLElement>("#post-preview")!;
+    const status = root.querySelector<HTMLElement>("#editor-status")!;
+    const publishButton = root.querySelector<HTMLButtonElement>("#post-publish")!;
+    const postSelect = root.querySelector<HTMLSelectElement>("#post-select")!;
+    const imageButton = root.querySelector<HTMLButtonElement>(".editor-image-add")!;
+    const deleteButton = root.querySelector<HTMLButtonElement>("#post-delete")!;
+    const images = root.querySelector<HTMLInputElement>("#post-images")!;
+    const imageStatus = root.querySelector<HTMLElement>("#image-status")!;
+    const confirmation = root.querySelector<HTMLDialogElement>("#post-confirm")!;
     function ask(message, label = "확인") {
-      root.querySelector("#post-confirm-message").textContent = message;
-      const accept = root.querySelector("#post-confirm-accept");
+      root.querySelector<HTMLElement>("#post-confirm-message")!.textContent = message;
+      const accept = root.querySelector<HTMLButtonElement>("#post-confirm-accept")!;
       accept.textContent = label;
       return new Promise(resolve => {
         const finish = value => { confirmation.close(); resolve(value); };
         accept.onclick = () => finish(true);
-        root.querySelector("#post-confirm-cancel").onclick = () => finish(false);
+        root.querySelector<HTMLButtonElement>("#post-confirm-cancel")!.onclick = () => finish(false);
         confirmation.oncancel = event => { event.preventDefault(); finish(false); };
         confirmation.showModal();
       });
@@ -153,7 +154,7 @@
       } catch { status.textContent = "임시저장에 실패했습니다. 브라우저 저장 공간을 확인하세요."; }
     }
     root.addEventListener("input", () => { render(); save(); });
-    root.querySelector("#post-save").addEventListener("click", () => save());
+    root.querySelector<HTMLButtonElement>("#post-save")!.addEventListener("click", () => save());
 
     async function getPost(path) {
       const response = await window.fetch(`/api/post?path=${encodeURIComponent(path)}`, { credentials: "same-origin", cache: "no-store" });
@@ -342,7 +343,6 @@
     void refreshPosts().catch(error => { status.textContent = error.message; });
     render();
   }
-  if (typeof document$ !== "undefined") document$.subscribe(initialize);
-  else if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });
   else initialize();
 })();

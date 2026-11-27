@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import worker, { encryptToken, hash, validPost } from "../publishing-worker/src/worker.mjs";
+import worker, { encryptToken, hash, validPost } from "../publishing-worker/src/worker.ts";
 
 const ORIGIN = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev";
 const ID = "52289794";

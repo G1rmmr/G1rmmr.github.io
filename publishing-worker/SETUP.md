@@ -72,19 +72,15 @@ Cloudflare Dashboard → **Workers & Pages → g1rmmr-blog-publisher → Setting
 
 ## 개발·배포
 
-Node.js 22 이상과 `publishing-worker`의 기존 npm 의존성을 사용합니다.
+Node.js 24 이상을 사용합니다. 저장소 루트에서 실행합니다.
 
-```powershell
-node --test tests/*.test.mjs
-node --test publishing-worker/tests/*.test.mjs
-.venv/Scripts/python.exe scripts/build_blog.py
-node publishing-worker/node_modules/wrangler/bin/wrangler.js d1 migrations apply DB --remote --config publishing-worker/wrangler.toml
-node publishing-worker/node_modules/wrangler/bin/wrangler.js deploy --config publishing-worker/wrangler.toml
-node scripts/set-publisher-encryption-key.mjs
+```sh
+npm ci
+npm test
+npm run dev
 ```
 
-마이그레이션 `0002_publishing.sql`은 새 테이블만 추가하며 기존 조회수 테이블은 수정하지 않습니다.
-Worker와 GitHub Pages는 별도 배포입니다. 편집기 코드를 변경하면 위 Worker 배포도 실행해야 합니다.
+GitHub Pages는 main에 푸시하면 배포됩니다. Cloudflare Workers Builds에서 발행 Worker의 루트 디렉터리를 저장소 루트로 지정하고 빌드 명령은 `npm ci && npm run build`, 배포 명령은 `npm run deploy`로 설정합니다. Node.js 버전은 24로 맞춥니다. 수동 배포도 같은 명령을 사용합니다. D1 스키마를 처음 설치하거나 변경할 때는 `npm run migrate:remote`를 실행합니다.
 
 ## 참고 문서
 

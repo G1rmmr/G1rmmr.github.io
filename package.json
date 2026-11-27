@@ -1,0 +1,29 @@
+{
+  "name": "realm-blog",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "check": "tsc -p tsconfig.json && tsc -p publishing-worker/tsconfig.json",
+    "test": "npm run check && npm run build && node --test tests/*.test.mjs publishing-worker/tests/*.test.mjs",
+    "dev": "npm run build && wrangler dev --config publishing-worker/wrangler.toml",
+    "deploy": "wrangler deploy --config publishing-worker/wrangler.toml",
+    "migrate:local": "wrangler d1 migrations apply DB --local --config publishing-worker/wrangler.toml",
+    "migrate:remote": "wrangler d1 migrations apply DB --remote --config publishing-worker/wrangler.toml"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261125.1",
+    "@types/markdown-it": "^14.2.0",
+    "@types/node": "^26.6.11",
+    "esbuild": "^0.28.2",
+    "highlight.js": "^11.12.0",
+    "markdown-it": "^15.0.3",
+    "miniflare": "5.20261019.1-beta",
+    "typescript": "^7.0.2",
+    "wrangler": "4.151.3"
+  },
+  "type": "module"
+}

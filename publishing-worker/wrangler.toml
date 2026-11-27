@@ -1,5 +1,5 @@
 name = "g1rmmr-blog-publisher"
-main = "src/worker.mjs"
+main = "src/worker.ts"
 compatibility_date = "2026-10-30"
 workers_dev = true
 preview_urls = false

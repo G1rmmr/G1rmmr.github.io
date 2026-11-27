@@ -1,3 +1,13 @@
+interface PublisherEnv {
+  DB: D1Database;
+  ASSETS: Fetcher;
+  PUBLISHER_ORIGIN: string;
+  GITHUB_OWNER_ID: string;
+  GITHUB_CLIENT_ID: string;
+  GITHUB_CLIENT_SECRET: string;
+  TOKEN_ENCRYPTION_KEY: string;
+}
+
 const REPO = "G1rmmr/G1rmmr.github.io";
 const BLOG = "https://g1rmmr.github.io";
 const SESSION = "__Host-blog_session";
@@ -18,7 +28,8 @@ const random = () => url64(crypto.getRandomValues(new Uint8Array(32)));
 export const hash = async text => url64(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(text))));
 
 class Problem extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  readonly status: number;
+  constructor(status: number, message: string) { super(message); this.status = status; }
 }
 
 function json(data, status = 200) {
@@ -37,7 +48,7 @@ function setCookie(res, name, value, seconds) {
 function redirect(location) { return new Response(null, { status: 302, headers: { Location: location, "Cache-Control": "no-store" } }); }
 
 function setupPage() {
-  return new Response('<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>WRITE 설정</title><body style="font-family:system-ui;background:#101116;color:#eee;max-width:40rem;margin:15vh auto;padding:2rem"><h1>GitHub 로그인 설정이 필요합니다.</h1><p>블로그 관리자가 GitHub App을 등록하고 Worker의 Client ID와 Client Secret을 설정하면 글을 작성할 수 있습니다.</p><a style="color:#aaa" href="https://g1rmmr.github.io/">블로그로 돌아가기</a></body></html>', { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+  return new Response('<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>WRITE 설정</title><body style="font-family:system-ui;background:#101010;color:#eee;max-width:40rem;margin:15vh auto;padding:2rem"><h1>GitHub 로그인 설정이 필요합니다.</h1><p>블로그 관리자가 GitHub App을 등록하고 Worker의 Client ID와 Client Secret을 설정하면 글을 작성할 수 있습니다.</p><a style="color:#aaa" href="https://g1rmmr.github.io/">블로그로 돌아가기</a></body></html>', { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 }
 
 function configured(env) {
@@ -62,7 +73,7 @@ async function decryptToken(value, env) {
   return new TextDecoder().decode(bytes);
 }
 
-async function github(token, path, options = {}, accept = "application/vnd.github+json") {
+async function github(token, path, options: RequestInit = {}, accept = "application/vnd.github+json") {
   return fetch(`https://api.github.com${path}`, {
     ...options, redirect: "manual", signal: AbortSignal.timeout(15000),
     headers: { Accept: accept, Authorization: `Bearer ${token}`, "User-Agent": "realm-blog-publisher", "X-GitHub-Api-Version": "2022-11-28", ...(options.body ? { "Content-Type": "application/json" } : {}) },
@@ -89,7 +100,7 @@ async function login(req, env) {
   const verifier = random();
   await env.DB.prepare("INSERT INTO publisher_oauth (state_hash, verifier, expires_at) VALUES (?1, ?2, ?3)").bind(await hash(state), verifier, now() + 600).run();
   const target = new URL("https://github.com/login/oauth/authorize");
-  target.search = new URLSearchParams({ client_id: env.GITHUB_CLIENT_ID, redirect_uri: `${env.PUBLISHER_ORIGIN}/auth/callback`, state, code_challenge: await hash(verifier), code_challenge_method: "S256", login: "G1rmmr", allow_signup: "false" });
+  target.search = new URLSearchParams({ client_id: env.GITHUB_CLIENT_ID, redirect_uri: `${env.PUBLISHER_ORIGIN}/auth/callback`, state, code_challenge: await hash(verifier), code_challenge_method: "S256", login: "G1rmmr", allow_signup: "false" }).toString();
   return setCookie(redirect(target.href), OAUTH, state, 600);
 }
 
@@ -106,7 +117,7 @@ async function callback(req, env, url) {
     body: JSON.stringify({ client_id: env.GITHUB_CLIENT_ID, client_secret: env.GITHUB_CLIENT_SECRET, code, redirect_uri: `${env.PUBLISHER_ORIGIN}/auth/callback`, code_verifier: pending.verifier }),
   });
   if (!exchange.ok) throw new Problem(502, "GitHub 로그인에 실패했습니다. 다시 시도하세요.");
-  const grant = await exchange.json();
+  const grant = await exchange.json<{ access_token?: string; expires_in?: number; error?: string }>();
   if (!grant.access_token || grant.error) throw new Problem(401, "GitHub 로그인이 거절됐습니다. 다시 로그인하세요.");
   const user = await githubData(await github(grant.access_token, "/user"));
   if (String(user.id) !== env.GITHUB_OWNER_ID) throw new Problem(403, "블로그 소유자 계정만 글을 작성할 수 있습니다.");
@@ -135,7 +146,7 @@ function checkMutation(req, env, user, contentType = "application/json") {
   if (req.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== contentType) throw new Problem(415, "요청 파일 형식이 올바르지 않습니다.");
 }
 
-export function imageFormat(bytes) {
+export function imageFormat(bytes: Uint8Array) {
   const starts = signature => signature.every((value, index) => bytes[index] === value);
   if (starts([137, 80, 78, 71, 13, 10, 26, 10])) return { extension: "png", type: "image/png" };
   if (starts([255, 216, 255])) return { extension: "jpg", type: "image/jpeg" };
@@ -212,7 +223,7 @@ async function readPost(req) {
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); }
+  try { return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes)); }
   catch { throw new Problem(400, "본문 형식이 올바르지 않습니다."); }
 }
 
@@ -225,7 +236,7 @@ export function validManagedPath(path) {
   return typeof path === "string" && /^docs\/posts\/[A-Za-z0-9][A-Za-z0-9_-]{0,247}\.md$/.test(path) && path !== "docs/posts/index.md";
 }
 
-export function splitPost(content, fallback = "") {
+export function splitPost(content: string, fallback = "") {
   const heading = /^# ([^\r\n]+)(?:\r?\n|$)/m.exec(content);
   if (!heading) return { title: fallback, body: content, prefix: "", newline: content.includes("\r\n") ? "\r\n" : "\n" };
   return { title: heading[1], body: content.slice(heading.index + heading[0].length).replace(/^\r?\n/, ""), prefix: content.slice(0, heading.index), newline: content.includes("\r\n") ? "\r\n" : "\n" };
@@ -237,7 +248,7 @@ async function readRepositoryPost(token, path) {
   const file = await githubData(response);
   if (file.type !== "file" || file.encoding !== "base64" || typeof file.content !== "string" || file.size > 1024 * 1024 || !SHA.test(file.sha || "")) throw new Problem(422, "이 글의 파일 형식이나 크기는 편집기에서 지원하지 않습니다.");
   let content;
-  try { content = new TextDecoder("utf-8", { fatal: true }).decode(unb64(file.content.replace(/\s/g, ""))); }
+  try { content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(unb64(file.content.replace(/\s/g, ""))); }
   catch { throw new Problem(422, "UTF-8 형식의 게시물만 편집할 수 있습니다."); }
   return { ...splitPost(content, path.slice(11, -3)), path, sha: file.sha, content };
 }
@@ -250,7 +261,7 @@ async function listPosts(env, user) {
   const files = await githubData(await github(user.token, `/repos/${REPO}/contents/docs/posts?ref=main`));
   if (!Array.isArray(files)) throw new Problem(502, "게시물 목록을 확인하지 못했습니다.");
   const cached = (await env.DB.prepare("SELECT path, blob_sha, title FROM publisher_titles").all()).results;
-  const titles = new Map(cached.map(row => [row.path, row]));
+  const titles = new Map<string, { title: string; blob_sha: string }>(cached.map(row => [row.path, row]));
   const posts = files.filter(file => file.type === "file" && validManagedPath(file.path)).sort((a, b) => b.name.localeCompare(a.name));
   // Warm a bounded number of legacy titles; new titles are cached on read/write.
   let remaining = 10;
@@ -418,7 +429,7 @@ async function route(req, env) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req: Request, env: PublisherEnv) {
     let response;
     try { response = await route(req, env); }
     catch (error) { response = json({ error: error instanceof Problem ? error.message : "요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요." }, error instanceof Problem ? error.status : 503); }

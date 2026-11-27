@@ -7,4 +7,4 @@ __pycache__/
 .DS_Store
 publishing-worker/.dev.vars
 publishing-worker/.wrangler/
-publishing-worker/node_modules/
+node_modules/

@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 
-const source = readFileSync(new URL("../docs/javascripts/editor.js", import.meta.url), "utf8");
+const source = readFileSync(new URL("../site/javascripts/editor.js", import.meta.url), "utf8");
 class Element {
   constructor(tag = "div") { this.localName = tag; this.children = []; this.dataset = {}; this.value = ""; this.textContent = ""; this.events = {}; this.isConnected = true; this.selectionStart = 0; this.selectionEnd = 0; }
   append(...nodes) { this.children.push(...nodes); }

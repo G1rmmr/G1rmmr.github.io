@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
+import { transform } from "esbuild";
+
 import test from "node:test";
 
-const require = createRequire(new URL("../package.json", import.meta.url));
-const { Miniflare, convertV4MiniflareOptions } = require("miniflare");
+import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 const ORIGIN = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev";
 
 test("workerd completes OAuth exchange, encryption, D1 session and authenticated editor", async () => {
@@ -20,7 +19,7 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
   const mf = new Miniflare(convertV4MiniflareOptions({ workers: [{
     name: "publisher-test",
     modules: true,
-    scriptPath: fileURLToPath(new URL("../src/worker.mjs", import.meta.url)),
+    script: (await transform(readFileSync(new URL("../src/worker.ts", import.meta.url), "utf8"), { loader: "ts", format: "esm" })).code,
     // Latest date supported by the workerd binary pinned in package-lock.json.
     compatibilityDate: "2026-10-26",
     bindings: { PUBLISHER_ORIGIN: ORIGIN, GITHUB_OWNER_ID: "52289794", GITHUB_CLIENT_ID: "Iv1.test", GITHUB_CLIENT_SECRET: "test-secret", TOKEN_ENCRYPTION_KEY: btoa("k".repeat(32)) },
