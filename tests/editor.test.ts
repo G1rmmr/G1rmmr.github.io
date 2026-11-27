@@ -6,14 +6,38 @@ import { webcrypto } from "node:crypto";
 
 const source = readFileSync(new URL("../site/javascripts/editor.js", import.meta.url), "utf8");
 class Element {
-  constructor(tag = "div") { this.localName = tag; this.children = []; this.dataset = {}; this.value = ""; this.textContent = ""; this.events = {}; this.isConnected = true; this.selectionStart = 0; this.selectionEnd = 0; }
+  localName: string;
+  children: (Element | { textContent: string })[] = [];
+  dataset: Record<string, string> = {};
+  events: Record<string, () => unknown> = {};
+  value = "";
+  textContent = "";
+  isConnected = true;
+  selectionStart = 0;
+  selectionEnd = 0;
+  disabled = false;
+  hidden = false;
+  files: Pick<File, "name" | "type" | "size">[] = [];
+  showModal?: () => void;
+  close?: () => void;
+  onclick?: () => void;
+  querySelector?: (selector: string) => Element;
+  constructor(tag = "div") { this.localName = tag; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(event, fn) { this.events[event] = fn; }
   click() { return this.events.click?.(); }
   setRangeText(text, start, end) { this.value = this.value.slice(0, start) + text + this.value.slice(end); this.selectionStart = this.selectionEnd = start + text.length; }
 }
-async function editor({ saved = null, blocked = false, origin = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev", replies = [], posts = {}, confirm = true } = {}) {
+interface EditorOptions {
+  saved?: { title: string; body: string };
+  blocked?: boolean;
+  origin?: string;
+  replies?: (Error | { ok?: boolean; status?: number; json?: () => Promise<unknown> })[];
+  posts?: Record<string, { title: string; body: string; sha: string }>;
+  confirm?: boolean;
+}
+async function editor({ saved = null, blocked = false, origin = "https://g1rmmr-blog-publisher.blckhnd-std.workers.dev", replies = [], posts = {}, confirm = true }: EditorOptions = {}) {
   const root = new Element();
   const fields = Object.fromEntries(["post-title", "post-body", "post-preview", "editor-status", "post-save", "post-publish", "post-images", "image-status", "image-add", "post-select", "post-load", "post-delete", "post-mode", "post-confirm", "post-confirm-message", "post-confirm-cancel", "post-confirm-accept"].map(id => [id, new Element()]));
   fields["post-confirm"].showModal = () => queueMicrotask(() => fields[confirm ? "post-confirm-accept" : "post-confirm-cancel"].onclick());
@@ -22,7 +46,7 @@ async function editor({ saved = null, blocked = false, origin = "https://g1rmmr-
   const storage = new Map(saved ? [["realm-post-draft-v2", JSON.stringify(saved)]] : []);
   const calls = []; const redirects = [];
   const document = { readyState: "complete", getElementById: () => root, createElement: tag => new Element(tag), createTextNode: text => ({ textContent: text }) };
-  const window = { location: { origin, href: origin + "/write/", replace: url => redirects.push(url) }, crypto: webcrypto, confirm: () => confirm, setTimeout: fn => fn(), fetch: async (url, options = {}) => {
+  const window = { location: { origin, href: origin + "/write/", replace: url => redirects.push(url) }, crypto: webcrypto, confirm: () => confirm, setTimeout: fn => fn(), fetch: async (url: string, options: { method?: string; body?: string } = {}) => {
     calls.push([url, options]);
     if (url === "/api/session") return { ok: true, json: async () => ({ csrf: "csrf" }) };
     if (url === "/api/posts" && !options.method) return { ok: true, json: async () => ({ posts: Object.entries(posts).map(([path, post]) => ({ path, sha: post.sha, title: post.title })) }) };
@@ -47,6 +71,15 @@ async function editor({ saved = null, blocked = false, origin = "https://g1rmmr-
   return { root, fields, storage, calls, redirects };
 }
 function descendants(node) { return [node, ...(node.children ?? []).flatMap(descendants)]; }
+
+test("fenced code highlights recognized languages and preserves unknown ones as text", async () => {
+  const e = await editor({ saved: { title: "Code", body: "~~~cpp\nreturn 42; // <tag>\n~~~\n~~~unknown\n<tag>\n~~~" } });
+  const [cpp, plain] = descendants(e.fields["post-preview"]).filter(n => n.localName === "pre");
+  assert.equal(cpp.dataset.language, "C++");
+  assert.match(cpp.children[0].innerHTML, /hljs-keyword/);
+  assert.match(cpp.children[0].innerHTML, /&lt;tag&gt;/);
+  assert.equal(plain.children[0].textContent, "<tag>");
+});
 
 test("public WRITE redirects to authenticated origin before displaying the editor", async () => {
   const e = await editor({ origin: "https://g1rmmr.github.io" });

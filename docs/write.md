@@ -9,7 +9,10 @@
   <div class="editor-columns">
     <div>
       <label for="post-body">본문</label>
-      <textarea id="post-body" rows="20" spellcheck="false"></textarea>
+      <div class="body-input">
+        <pre id="body-colors" aria-hidden="true" hidden></pre>
+        <textarea id="post-body" rows="20" spellcheck="false"></textarea>
+      </div>
     </div>
     <details class="editor-preview" open><summary>미리보기</summary><div id="post-preview"></div></details>
   </div>

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
 import { build } from "esbuild";
+import { codeLabel } from "../docs/javascripts/code-label.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const docs = join(root, "docs");
@@ -17,6 +18,12 @@ const md = new MarkdownIt({
   },
 });
 const escape = md.utils.escapeHtml;
+const renderFence = md.renderer.rules.fence!;
+md.renderer.rules.fence = (tokens, i, options, env, renderer) => {
+  const language = tokens[i].info.trim().split(/\s+/)[0];
+  const html = renderFence(tokens, i, options, env, renderer);
+  return language ? html.replace("<pre>", () => `<pre data-language="${escape(codeLabel(language))}">`) : html;
+};
 const linkOpen = md.renderer.rules.link_open;
 md.renderer.rules.link_open = (tokens, i, options, env, renderer) => {
   const href = tokens[i].attrGet("href");

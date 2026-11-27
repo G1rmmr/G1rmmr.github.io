@@ -31,7 +31,7 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
       if (url.hostname === "github.com" && url.pathname === "/login/oauth/access_token") {
         if (redirectUpstream) return new Response(null, { status: 302, headers: { Location: "https://untrusted.example/" } });
         assert.equal(req.method, "POST");
-        const body = await req.json();
+        const body = await req.json() as { client_secret: string; code: string; code_verifier: string };
         assert.equal(body.client_secret, "test-secret");
         assert.equal(body.code, "test-code");
         assert.match(body.code_verifier, /^[A-Za-z0-9_-]{43}$/);
@@ -42,7 +42,8 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
       if (url.pathname === "/repos/G1rmmr/G1rmmr.github.io/contents/docs/posts") return Response.json(postContent === null ? [] : [{ type: "file", path: postPath, name: "runtime-test.md", sha: postSha }]);
       if (url.pathname === `/repos/G1rmmr/G1rmmr.github.io/contents/${postPath}`) {
         if (req.method === "PUT" || req.method === "DELETE") {
-          const change = await req.json(); postWrites++;
+          const change = await req.json() as { sha: string; branch: string; content?: string };
+          postWrites++;
           assert.equal(change.sha, postSha); assert.equal(change.branch, "main");
           postContent = req.method === "DELETE" ? null : Buffer.from(change.content, "base64").toString();
           postSha = "c".repeat(40);
@@ -78,7 +79,7 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
     const cookie = callback.headers.getSetCookie().find(v => v.startsWith("__Host-blog_session=")).split(";")[0];
     const session = await mf.dispatchFetch(ORIGIN + "/api/session", { headers: { Cookie: cookie } });
     assert.equal(session.status, 200);
-    const userSession = await session.json();
+    const userSession = await session.json() as { login: string; csrf: string };
     assert.equal(userSession.login, "G1rmmr");
     const page = await mf.dispatchFetch(ORIGIN + "/write/", { redirect: "manual", headers: { Cookie: cookie } });
     assert.equal(page.status, 200);
@@ -87,36 +88,39 @@ test("workerd completes OAuth exchange, encryption, D1 session and authenticated
     assert.match(html, /EDITOR/);
     assert.match(html, /href="https:\/\/g1rmmr.github.io\/"/);
     const row = await db.prepare("SELECT token_ciphertext FROM publisher_sessions").first();
-    assert.ok(!row.token_ciphertext.includes("test-user-token"));
+    assert.ok(typeof row.token_ciphertext === "string" && !row.token_ciphertext.includes("test-user-token"));
     const uploaded = await mf.dispatchFetch(ORIGIN + "/api/images", { method: "POST", headers: { Cookie: cookie, Origin: ORIGIN, "X-CSRF-Token": userSession.csrf, "Content-Type": "image/png" }, body: png });
     assert.equal(uploaded.status, 200);
-    const image = await uploaded.json();
+    const image = await uploaded.json() as { path: string; preview: string };
     assert.match(image.path, /^\/img\/uploads\/[a-f0-9]{64}\.png$/);
     const preview = await mf.dispatchFetch(ORIGIN + image.preview, { headers: { Cookie: cookie } });
     assert.equal(preview.status, 200);
     assert.equal(preview.headers.get("Content-Type"), "image/png");
     assert.deepEqual(new Uint8Array(await preview.arrayBuffer()), png);
     const list = await mf.dispatchFetch(ORIGIN + "/api/posts", { headers: { Cookie: cookie } });
-    assert.equal((await list.json()).posts[0].title, "Runtime title");
+    const listing = await list.json() as { posts: { title: string }[] };
+    assert.equal(listing.posts[0].title, "Runtime title");
     const loaded = await mf.dispatchFetch(`${ORIGIN}/api/post?path=${postPath}`, { headers: { Cookie: cookie } });
-    const original = await loaded.json();
+    const original = await loaded.json() as { body: string; sha: string };
     assert.equal(original.body, "원본 본문\r\n");
     const mutationHeaders = { Cookie: cookie, Origin: ORIGIN, "X-CSRF-Token": userSession.csrf, "Content-Type": "application/json" };
     const updateBody = JSON.stringify({ request_id: crypto.randomUUID(), path: postPath, sha: original.sha, title: "수정 제목", body: "수정 본문\n" });
     for (let attempt = 0; attempt < 2; attempt++) {
       const updated = await mf.dispatchFetch(ORIGIN + "/api/post", { method: "PUT", headers: mutationHeaders, body: updateBody });
-      assert.equal(updated.status, 200); assert.equal((await updated.json()).blob_sha, postSha);
+      assert.equal(updated.status, 200);
+      assert.equal((await updated.json() as { blob_sha: string }).blob_sha, postSha);
     }
     assert.equal(postWrites, 1);
     assert.equal(postContent, "# 수정 제목\r\n\r\n수정 본문\r\n");
     const deleteBody = JSON.stringify({ request_id: crypto.randomUUID(), path: postPath, sha: postSha });
     for (let attempt = 0; attempt < 2; attempt++) {
       const deleted = await mf.dispatchFetch(ORIGIN + "/api/post", { method: "DELETE", headers: mutationHeaders, body: deleteBody });
-      assert.equal(deleted.status, 200); assert.equal((await deleted.json()).deleted, true);
+      assert.equal(deleted.status, 200);
+      assert.equal((await deleted.json() as { deleted: boolean }).deleted, true);
     }
     assert.equal(postWrites, 2);
     const afterDelete = await mf.dispatchFetch(ORIGIN + "/api/posts", { headers: { Cookie: cookie } });
-    assert.deepEqual((await afterDelete.json()).posts, []);
+    assert.deepEqual((await afterDelete.json() as typeof listing).posts, []);
     redirectUpstream = true;
     const retry = await mf.dispatchFetch(ORIGIN + "/auth/login", { redirect: "manual" });
     const retryState = new URL(retry.headers.get("Location")).searchParams.get("state");

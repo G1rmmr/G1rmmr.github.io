@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
-const read = path => readFileSync(new URL("../" + path, import.meta.url), "utf8");
+const read = (path: string) => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const files = readdirSync(new URL("../docs/posts/", import.meta.url)).filter(name => name.endsWith(".md") && name !== "index.md");
 
 test("every source post has a page, search entry and date in newest-first order", () => {

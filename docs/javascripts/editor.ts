@@ -1,4 +1,9 @@
-interface Window { __blogEditorInitialized?: boolean }
+import hljs from "highlight.js/lib/common";
+import glsl from "highlight.js/lib/languages/glsl";
+import { codeLabel } from "./code-label.ts";
+
+hljs.registerLanguage("glsl", glsl);
+declare global { interface Window { __blogEditorInitialized?: boolean } }
 (() => {
   "use strict";
   if (window.__blogEditorInitialized) return;
@@ -47,6 +52,21 @@ interface Window { __blogEditorInitialized?: boolean }
     }
     const title = root.querySelector<HTMLInputElement>("#post-title")!;
     const body = root.querySelector<HTMLTextAreaElement>("#post-body")!;
+    const colors = root.querySelector<HTMLPreElement>("#body-colors");
+    function syncColors() {
+      if (!colors || colors.hidden) return;
+      colors.style.width = body.clientWidth + "px";
+      colors.style.height = body.clientHeight + "px";
+      colors.scrollTop = body.scrollTop;
+      colors.scrollLeft = body.scrollLeft;
+    }
+    body.addEventListener("scroll", syncColors);
+    let composing = false;
+    if (colors) {
+      new ResizeObserver(syncColors).observe(body);
+      body.addEventListener("compositionstart", () => { composing = true; colors.hidden = true; });
+      body.addEventListener("compositionend", () => { composing = false; render(); });
+    }
     const preview = root.querySelector<HTMLElement>("#post-preview")!;
     const status = root.querySelector<HTMLElement>("#editor-status")!;
     const publishButton = root.querySelector<HTMLButtonElement>("#post-publish")!;
@@ -120,19 +140,38 @@ interface Window { __blogEditorInitialized?: boolean }
         heading.textContent = title.value;
         preview.append(heading);
       }
-      let code = null;
       let list = null;
-      for (const line of body.value.split("\n")) {
-        if (line.startsWith("```")) {
-          if (code) code = null;
-          else {
-            const pre = document.createElement("pre"); code = document.createElement("code");
-            pre.append(code); preview.append(pre);
-          }
+      const lines = body.value.split("\n");
+      const coloredSource: (string | Node)[] = [];
+      let highlighted = false;
+      let plainStart = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+        if (fence) {
+          const language = fence[2].trim().split(/\s+/)[0];
+          const endFence = new RegExp("^ {0,3}" + fence[1][0] + "{" + fence[1].length + ",}[ \\t]*$");
+          const start = i + 1;
+          i = start;
+          while (i < lines.length && !endFence.test(lines[i])) i++;
+          const source = lines.slice(start, i).join("\n");
+          const pre = document.createElement("pre");
+          const code = document.createElement("code");
+          if (language) pre.dataset.language = codeLabel(language);
+          if (language && hljs.getLanguage(language)) {
+            code.innerHTML = hljs.highlight(source, { language }).value;
+            if (colors) {
+              coloredSource.push(lines.slice(plainStart, start).join("\n") + (start < lines.length ? "\n" : ""), code.cloneNode(true));
+              if (i < lines.length && i > start) coloredSource.push("\n");
+              plainStart = i;
+              highlighted = true;
+            }
+          } else code.textContent = source;
+          pre.append(code);
+          preview.append(pre);
           list = null;
           continue;
         }
-        if (code) { code.textContent += line + "\n"; continue; }
         const item = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
         if (item) {
           const tag = /^\s*\d/.test(line) ? "ol" : "ul";
@@ -144,6 +183,13 @@ interface Window { __blogEditorInitialized?: boolean }
         const h = line.match(/^(#{1,6})\s+(.*)$/);
         const node = document.createElement(h ? `h${h[1].length}` : "p");
         inline(node, h ? h[2] : line); preview.append(node);
+      }
+      if (colors) {
+        colors.hidden = !highlighted || composing;
+        if (highlighted) {
+          colors.replaceChildren(...coloredSource, lines.slice(plainStart).join("\n"), "\u200b");
+          syncColors();
+        }
       }
     }
     function save(quiet = false) {

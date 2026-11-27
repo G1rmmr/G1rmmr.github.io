@@ -7,7 +7,8 @@ const wrangler = fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js
 const config = fileURLToPath(new URL("../publishing-worker/wrangler.toml", import.meta.url));
 const existing = spawnSync(process.execPath, [wrangler, "secret", "list", "--config", config], { cwd: root, encoding: "utf8" });
 if (existing.status !== 0) throw new Error("Cannot inspect existing secret names; refusing to replace a key.");
-if (JSON.parse(existing.stdout).some(secret => secret.name === "TOKEN_ENCRYPTION_KEY")) {
+const secrets: { name: string }[] = JSON.parse(existing.stdout);
+if (secrets.some(secret => secret.name === "TOKEN_ENCRYPTION_KEY")) {
   console.log("TOKEN_ENCRYPTION_KEY is already configured; leaving it unchanged.");
 } else {
   const child = spawn(process.execPath, [wrangler, "secret", "put", "TOKEN_ENCRYPTION_KEY", "--config", config], { cwd: root, stdio: ["pipe", "inherit", "inherit"] });

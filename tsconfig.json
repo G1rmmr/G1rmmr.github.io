@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "strict": false,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": [
       "node"

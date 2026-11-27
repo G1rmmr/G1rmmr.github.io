@@ -7,8 +7,8 @@
   },
   "scripts": {
     "build": "node scripts/build.ts",
-    "check": "tsc -p tsconfig.json && tsc -p publishing-worker/tsconfig.json",
-    "test": "npm run check && npm run build && node --test tests/*.test.mjs publishing-worker/tests/*.test.mjs",
+    "check": "tsc -p tsconfig.json && tsc -p publishing-worker/tsconfig.json && tsc -p tests/tsconfig.json",
+    "test": "npm run check && npm run build && node --test tests/*.test.ts publishing-worker/tests/*.test.ts",
     "dev": "npm run build && wrangler dev --config publishing-worker/wrangler.toml",
     "deploy": "wrangler deploy --config publishing-worker/wrangler.toml",
     "migrate:local": "wrangler d1 migrations apply DB --local --config publishing-worker/wrangler.toml",

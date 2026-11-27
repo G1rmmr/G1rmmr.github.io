@@ -68,7 +68,8 @@ test("OAuth uses PKCE and one-time cookie-bound state; tokens stay encrypted", a
     const cookies = r.headers.getSetCookie();
     assert.ok(cookies.some(x => x.startsWith("__Host-blog_session=")));
     assert.ok(!cookies.join().includes(TOKEN));
-    assert.ok(!env.db.prepare("SELECT token_ciphertext FROM publisher_sessions").get().token_ciphertext.includes(TOKEN));
+    const ciphertext = env.db.prepare("SELECT token_ciphertext FROM publisher_sessions").get().token_ciphertext;
+    assert.ok(typeof ciphertext === "string" && !ciphertext.includes(TOKEN));
     assert.equal((await call(env, `/auth/callback?state=${state}&code=test`, { headers })).status, 400);
   });
 });
@@ -126,7 +127,7 @@ test("recovers a lost PUT response without duplication or overwriting", async ()
 });
 test("deployment status distinguishes pending, running, failure and success", async () => {
   const env = environment(); const headers = await authenticated(env);
-  for (const [run, expected] of [[null, "pending"], [{ status: "in_progress" }, "running"], [{ status: "completed", conclusion: "failure" }, "failure"], [{ status: "completed", conclusion: "success" }, "success"]]) {
+  for (const [run, expected] of [[null, "pending"], [{ status: "in_progress" }, "running"], [{ status: "completed", conclusion: "failure" }, "failure"], [{ status: "completed", conclusion: "success" }, "success"]] as const) {
     await upstream(async () => response({ workflow_runs: run ? [{ id: 1, head_sha: COMMIT, ...run }] : [] }), async () => {
       const r = await call(env, `/api/deployment?sha=${COMMIT}`, { headers }); assert.equal((await r.json()).status, expected);
     });
