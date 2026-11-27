@@ -1,10 +1,33 @@
-site/
+# Generated site, dependencies and local tooling
+/site/
+node_modules/
+coverage/
+*.tsbuildinfo
+.delta/
 .venv/
 .cache/
-.wrangler/
 __pycache__/
 .zensical-build.toml
+
+# Wrangler local state (including local D1), credentials and overrides
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example
+!.dev.vars.example
+.npmrc.local
+*.key
+*.p12
+*.pfx
+*.pem
+!*.public.pem
+!*.cert.pem
+
+# Local diagnostics and OS metadata
+npm-debug.log*
+wrangler-debug.log*
 .DS_Store
-publishing-worker/.dev.vars
-publishing-worker/.wrangler/
-node_modules/
+Thumbs.db
+Desktop.ini
