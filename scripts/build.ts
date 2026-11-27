@@ -36,10 +36,14 @@ async function emit(path: string, content: string) {
 }
 
 async function page(url: string, title: string, body: string, script = "") {
-  const nav = [["/", "소개"], ["/posts/", "게시물"], [publisher, "글쓰기"], ["/search/", "검색"]]
-    .map(([href, label]) => `<a href="${href}"${(href === url || (href === "/posts/" && url.startsWith(href))) ? ' aria-current="page"' : ""}>${label}</a>`).join("");
+  const nav = [["/", "소개"], ["/posts/", "게시물"], ["/search/", "검색"], [publisher, "글쓰기"]]
+    .map(([href, label]) => {
+      const current = href === url || (href === publisher && url === "/write/") ? "page"
+        : href === "/posts/" && url.startsWith(href) ? "location" : "";
+      return `<a href="${href}"${current ? ` aria-current="${current}"` : ""}>${label}</a>`;
+    }).join("");
   const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(title)} · R E A L M</title><link rel="icon" href="/img/favicon.png"><link rel="stylesheet" href="/stylesheets/extra.css"></head>
-<body data-md-color-scheme="slate"><a class="skip" href="#content">본문으로</a><header><a href="/" class="brand">R E A L M</a><nav aria-label="주 메뉴">${nav}</nav></header><main id="content" class="md-content__inner md-typeset">${body}</main>${script ? `<script defer src="${script}"></script>` : ""}</body></html>`;
+<body><a class="skip" href="#content">본문으로</a><header class="masthead"><div class="masthead-inner"><a href="/" class="brand" aria-label="REALM 홈">REALM</a><nav aria-label="주 메뉴">${nav}</nav></div></header><main id="content" tabindex="-1">${body}</main>${script ? `<script defer src="${script}"></script>` : ""}</body></html>`;
   await emit(url === "/404.html" ? "404.html" : decodeURIComponent(url.slice(1)) + "index.html", html);
   if (url !== "/404.html") paths.push(url);
 }
@@ -69,9 +73,14 @@ function render(source: string, url: string) {
 await rm(site, { recursive: true, force: true });
 await mkdir(site, { recursive: true });
 for (const dir of ["img", "stylesheets"]) await cp(join(docs, dir), join(site, dir), { recursive: true });
-const home = render(await readFile(join(docs, "index.md"), "utf8"), "/");
-await page("/", home.title, home.body);
-const posts: { url: string; title: string; date: string }[] = [];
+interface Post { url: string; title: string; date: string }
+const posts: Post[] = [];
+const timestamp = (date: string) => `<time datetime="${date}">${date.slice(2).replaceAll("-", "")}</time>`;
+function postList(items: Post[]) {
+  return `<ul class="post-list">${items.map(p =>
+    `<li><a href="${p.url}">${escape(p.title)}</a>${timestamp(p.date)}</li>`
+  ).join("")}</ul>`;
+}
 for (const name of await readdir(join(docs, "posts"))) {
   if (!name.endsWith(".md") || name === "index.md") continue;
   const match = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:-|\.md$)/.exec(name);
@@ -81,14 +90,14 @@ for (const name of await readdir(join(docs, "posts"))) {
   const url = "/posts/" + encodeURIComponent(name.slice(0, -3)) + "/";
   const post = render(await readFile(join(docs, "posts", name), "utf8"), url);
   posts.push({ url, title: post.title, date });
-  await page(url, post.title, post.body);
+  await page(url, post.title, `<article class="reading"><div class="reading-meta"><a href="/posts/">← 게시물 목록</a>${timestamp(date)}</div>${post.body}<footer><a href="/posts/">게시물 목록으로</a></footer></article>`);
 }
 posts.sort((a,b) => b.date.localeCompare(a.date) || b.url.localeCompare(a.url));
-await page("/posts/", "게시물", "<h1>게시물</h1><ul>" + posts.map(p =>
-  `<li><a href="${p.url}">${escape(p.title)}</a><time datetime="${p.date}">${p.date.slice(2).replaceAll("-", "")}</time></li>`
-).join("") + "</ul>");
+const home = render(await readFile(join(docs, "index.md"), "utf8"), "/");
+await page("/", home.title, home.body.replace("<!-- recent-posts -->", postList(posts.slice(0, 3))));
+await page("/posts/", "게시물", `<section class="archive"><h1>게시물</h1>${postList(posts)}</section>`);
 await page("/write/", "글쓰기", await readFile(join(docs,"write.md"),"utf8"), "/javascripts/editor.js");
-await page("/search/", "검색", '<h1>검색</h1><label for="query">제목 또는 본문</label><input id="query" type="search"><p role="status"></p><ul id="results"></ul>', "/assets/search.js");
+await page("/search/", "검색", '<section class="search"><h1>검색</h1><label for="query">제목 또는 본문</label><input id="query" name="q" type="search" placeholder="검색어 입력" enterkeyhint="search"><p role="status"></p><ul id="results"></ul></section>', "/assets/search.js");
 await page("/404.html", "페이지를 찾을 수 없습니다", '<h1>페이지를 찾을 수 없습니다</h1><a href="/posts/">게시물 목록</a>');
 await emit("search.json", JSON.stringify(entries));
 await emit("sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + paths.map(p => "<url><loc>" + origin + p + "</loc></url>").join("") + "</urlset>");
